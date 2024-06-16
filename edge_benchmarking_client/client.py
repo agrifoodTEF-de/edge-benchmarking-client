@@ -1,3 +1,4 @@
+import io
 import logging
 
 logging.basicConfig(
@@ -8,9 +9,12 @@ logging.basicConfig(
 
 import requests
 import validators
+import pandas as pd
 
 from pathlib import Path
+from requests import Response
 from requests.auth import HTTPBasicAuth
+from edge_benchmarking_client.endpoints import BENCHMARK_DATA
 
 SUPPORTED_MODEL_FORMATS = {".onnx", ".pt", ".pth"}
 
@@ -59,14 +63,6 @@ class EdgeBenchmarkingClient:
             filepaths.extend(root_path.rglob(f"*{ext}"))
         return filepaths, root_path
 
-    def find_dataset(self, root_dir: str, file_extensions: set[str]) -> list[Path]:
-        sample_filepaths, root_path = self._collect_files(
-            root_dir=root_dir, file_extensions=file_extensions
-        )
-        logging.info(
-            f"Found dataset containing {len(sample_filepaths)} samples with type(s) {file_extensions} in '{root_path}'."
-        )
-
     def _find_file(
         self, root_dir: str, extensions: set[str], filename: str | None = None
     ) -> Path:
@@ -92,6 +88,21 @@ class EdgeBenchmarkingClient:
         )
         return filepath
 
+    def _endpoint(self, endpoint: str) -> str:
+        url = self.api + endpoint
+        if not validators.url(url):
+            raise RuntimeError(f"Invalid URL: {url}")
+        return url
+
+    def find_dataset(self, root_dir: str, file_extensions: set[str]) -> list[Path]:
+        sample_filepaths, root_path = self._collect_files(
+            root_dir=root_dir, file_extensions=file_extensions
+        )
+        logging.info(
+            f"Found dataset containing {len(sample_filepaths)} samples with type(s) {file_extensions} in '{root_path}'."
+        )
+        return sample_filepaths
+
     def find_model(self, root_dir: str, model_name: str | None = None) -> Path:
         return self._find_file(
             root_dir=root_dir, extensions=SUPPORTED_MODEL_FORMATS, filename=model_name
@@ -104,5 +115,45 @@ class EdgeBenchmarkingClient:
             root_dir=root_dir, extensions={".pbtxt"}, filename=model_metadata_name
         )
 
-    def benchmark(self, dataset: list[Path], model: Path, model_metadata: Path) -> None:
+    def _upload_benchmark_data(
+        self, dataset: list[Path], model: Path, model_metadata: Path
+    ) -> Response:
+        try:
+            benchmark_data_files = [
+                ("dataset", (sample.name, open(sample, "rb"))) for sample in dataset
+            ] + [
+                ("model", (model.name, open(model, "rb"))),
+                ("model_metadata", (model_metadata.name, open(model_metadata, "rb"))),
+            ]
+            response = requests.post(
+                self._endpoint(BENCHMARK_DATA),
+                files=benchmark_data_files,
+                auth=self.auth,
+            )
+            response.raise_for_status()
+            logging.info(f"{response.status_code} - {response.json()}")
+            return response
+        finally:
+            for _, (_, fh) in benchmark_data_files:
+                fh.close()
+
+    def _wait_for_benchmark_results(self, benchmark_job_id: str) -> Response:
         raise NotImplementedError()
+
+    def benchmark(
+        self, dataset: list[Path], model: Path, model_metadata: Path
+    ) -> pd.DataFrame:
+        upload_benchmark_data_response = self._upload_benchmark_data(
+            dataset=dataset, model=model, model_metadata=model_metadata
+        )
+        benchmark_job_id = upload_benchmark_data_response.json()["bucket_name"]
+
+        # TODO: Poll Edge-Manager for benchmarking results of job with 'benchmark_job_id'
+        benchmark_results_response = self._wait_for_benchmark_results(
+            benchmark_job_id=benchmark_job_id
+        )
+
+        benchmark_results_csv = io.BytesIO(benchmark_results_response.content)
+        benchmark_results_df = pd.read_csv(benchmark_results_csv)
+
+        return benchmark_results_df

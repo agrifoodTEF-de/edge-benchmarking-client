@@ -31,8 +31,13 @@ if __name__ == "__main__":
     dataset = client.find_dataset(
         root_dir=EXAMPLE_ROOT_DIR, file_extensions={".jpg", ".jpeg"}
     )
-
     model = client.find_model(root_dir=EXAMPLE_ROOT_DIR)
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
 
-    client.benchmark(dataset=dataset, model=model, model_metadata=model_metadata)
+    # Start benchmark
+    benchmark_results = client.benchmark(
+        dataset=dataset, model=model, model_metadata=model_metadata
+    )
+
+    # Use matplotlib to visualize 'benchmark_results'
+    # TODO
