@@ -115,8 +115,13 @@ class EdgeBenchmarkingClient:
             root_dir=root_dir, extensions={".pbtxt"}, filename=model_metadata_name
         )
 
+    def find_labels(self, root_dir: str, labels_name: str | None = None) -> Path:
+        return self._find_file(
+            root_dir=root_dir, extensions={".txt"}, filename=labels_name
+        )
+
     def _upload_benchmark_data(
-        self, dataset: list[Path], model: Path, model_metadata: Path
+        self, dataset: list[Path], model: Path, model_metadata: Path, labels: Path
     ) -> Response:
         try:
             benchmark_data_files = [
@@ -124,6 +129,7 @@ class EdgeBenchmarkingClient:
             ] + [
                 ("model", (model.name, open(model, "rb"))),
                 ("model_metadata", (model_metadata.name, open(model_metadata, "rb"))),
+                ("labels", (labels.name, open(labels, "rb"))),
             ]
             response = requests.post(
                 url=self._endpoint(BENCHMARK_DATA),
@@ -147,11 +153,11 @@ class EdgeBenchmarkingClient:
         raise NotImplementedError()
 
     def benchmark(
-        self, dataset: list[Path], model: Path, model_metadata: Path
+        self, dataset: list[Path], model: Path, model_metadata: Path, labels: Path
     ) -> pd.DataFrame:
         # 1. Upload benchmarking data
         upload_benchmark_data_response = self._upload_benchmark_data(
-            dataset=dataset, model=model, model_metadata=model_metadata
+            dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
         )
 
         # 2. Get the bucket name of the benchmarking data

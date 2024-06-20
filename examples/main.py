@@ -33,10 +33,11 @@ if __name__ == "__main__":
     )
     model = client.find_model(root_dir=EXAMPLE_ROOT_DIR)
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
+    labels = client.find_labels(root_dir=EXAMPLE_ROOT_DIR)
 
     # Start benchmark
     benchmark_results = client.benchmark(
-        dataset=dataset, model=model, model_metadata=model_metadata
+        dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
     )
 
     # Use matplotlib to visualize 'benchmark_results'
