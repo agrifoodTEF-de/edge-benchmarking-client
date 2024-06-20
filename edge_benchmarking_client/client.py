@@ -14,7 +14,7 @@ import pandas as pd
 from pathlib import Path
 from requests import Response
 from requests.auth import HTTPBasicAuth
-from edge_benchmarking_client.endpoints import BENCHMARK_DATA
+from edge_benchmarking_client.endpoints import BENCHMARK_DATA, BENCHMARK_JOB_START
 
 SUPPORTED_MODEL_FORMATS = {".onnx", ".pt", ".pth"}
 
@@ -88,8 +88,8 @@ class EdgeBenchmarkingClient:
         )
         return filepath
 
-    def _endpoint(self, endpoint: str) -> str:
-        url = self.api + endpoint
+    def _endpoint(self, endpoint: str, path: str = "") -> str:
+        url = Path(self.api, endpoint, path)
         if not validators.url(url):
             raise RuntimeError(f"Invalid URL: {url}")
         return url
@@ -126,7 +126,7 @@ class EdgeBenchmarkingClient:
                 ("model_metadata", (model_metadata.name, open(model_metadata, "rb"))),
             ]
             response = requests.post(
-                self._endpoint(BENCHMARK_DATA),
+                url=self._endpoint(BENCHMARK_DATA),
                 files=benchmark_data_files,
                 auth=self.auth,
             )
@@ -137,22 +137,37 @@ class EdgeBenchmarkingClient:
             for _, (_, fh) in benchmark_data_files:
                 fh.close()
 
+    def _start_benchmark_job(self, job_id: str) -> Response:
+        response = requests.post(url=self._endpoint(BENCHMARK_JOB_START, job_id))
+        response.raise_for_status()
+        logging.info(f"{response.status_code} - {response.json()}")
+        return response
+
     def _wait_for_benchmark_results(self, benchmark_job_id: str) -> Response:
         raise NotImplementedError()
 
     def benchmark(
         self, dataset: list[Path], model: Path, model_metadata: Path
     ) -> pd.DataFrame:
+        # 1. Upload benchmarking data
         upload_benchmark_data_response = self._upload_benchmark_data(
             dataset=dataset, model=model, model_metadata=model_metadata
         )
+
+        # 2. Get the bucket name of the benchmarking data
         benchmark_job_id = upload_benchmark_data_response.json()["bucket_name"]
 
-        # TODO: Poll Edge-Manager for benchmarking results of job with 'benchmark_job_id'
+        # 3. Start a benchmarking job on that bucket
+        start_benchmark_job_response = self._start_benchmark_job(
+            job_id=benchmark_job_id
+        )
+
+        # 4. Wait (async?) for the benchmarking results to be available
         benchmark_results_response = self._wait_for_benchmark_results(
             benchmark_job_id=benchmark_job_id
         )
 
+        # 5. Process the benchmarking results (visualize, analyze, ...)
         benchmark_results_csv = io.BytesIO(benchmark_results_response.content)
         benchmark_results_df = pd.read_csv(benchmark_results_csv)
 
