@@ -36,9 +36,17 @@ if __name__ == "__main__":
     labels = client.find_labels(root_dir=EXAMPLE_ROOT_DIR)
 
     # Start benchmark
-    benchmark_results = client.benchmark(
-        dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
+    benchmark_results, inference_results = client.benchmark(
+        edge_device="edge-03",
+        dataset=dataset,
+        model=model,
+        model_name=EXAMPLE_ROOT_DIR,
+        model_metadata=model_metadata,
+        labels=labels,
+        num_classes=1000,
     )
 
-    # Use matplotlib to visualize 'benchmark_results'
+    print("Results:", benchmark_results, inference_results)
+
+    # Use matplotlib to visualize results
     # TODO

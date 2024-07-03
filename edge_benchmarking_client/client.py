@@ -1,4 +1,3 @@
-import io
 import logging
 
 logging.basicConfig(
@@ -7,14 +6,22 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+import os
+
+import math
+import time
+import urllib
 import requests
 import validators
-import pandas as pd
 
+from typing import Any
 from pathlib import Path
 from requests import Response
 from requests.auth import HTTPBasicAuth
-from edge_benchmarking_client.endpoints import BENCHMARK_DATA, BENCHMARK_JOB_START
+from edge_benchmarking_client.endpoints import (
+    BENCHMARK_DATA,
+    BENCHMARK_JOB,
+)
 
 SUPPORTED_MODEL_FORMATS = {".onnx", ".pt", ".pth"}
 
@@ -88,8 +95,11 @@ class EdgeBenchmarkingClient:
         )
         return filepath
 
-    def _endpoint(self, endpoint: str, path: str = "") -> str:
-        url = Path(self.api, endpoint, path)
+    def _endpoint(self, *paths, query: dict | None = None) -> str:
+        url = self.api + os.path.join(*paths)
+        if query is not None:
+            query_string = urllib.parse.urlencode(query)
+            url += f"?{query_string}"
         if not validators.url(url):
             raise RuntimeError(f"Invalid URL: {url}")
         return url
@@ -120,7 +130,7 @@ class EdgeBenchmarkingClient:
             root_dir=root_dir, extensions={".txt"}, filename=labels_name
         )
 
-    def _upload_benchmark_data(
+    def upload_benchmark_data(
         self, dataset: list[Path], model: Path, model_metadata: Path, labels: Path
     ) -> Response:
         try:
@@ -143,38 +153,102 @@ class EdgeBenchmarkingClient:
             for _, (_, fh) in benchmark_data_files:
                 fh.close()
 
-    def _start_benchmark_job(self, job_id: str) -> Response:
-        response = requests.post(url=self._endpoint(BENCHMARK_JOB_START, job_id))
+    def start_benchmark_job(
+        self,
+        job_id: str,
+        inference_server_type: str,
+        edge_device_config: dict,
+        inference_client_config: dict,
+    ) -> Response:
+        response = requests.post(
+            url=self._endpoint(BENCHMARK_JOB, job_id, "start"),
+            json={
+                "inference_server_type": inference_server_type,
+                "edge_device": edge_device_config,
+                "inference_client": inference_client_config,
+            },
+            auth=self.auth,
+        )
         response.raise_for_status()
-        logging.info(f"{response.status_code} - {response.json()}")
         return response
 
-    def _wait_for_benchmark_results(self, benchmark_job_id: str) -> Response:
-        raise NotImplementedError()
+    def get_benchmark_job(self, job_id: str) -> Response:
+        response = requests.get(
+            url=self._endpoint(BENCHMARK_JOB, job_id), auth=self.auth
+        )
+        response.raise_for_status()
+        return response
+
+    def get_benchmark_job_status(self, job_id: str) -> Response:
+        response = requests.get(
+            url=self._endpoint(BENCHMARK_JOB, job_id, "status"), auth=self.auth
+        )
+        response.raise_for_status()
+        return response
+
+    def get_benchmark_job_results(
+        self, job_id: str, max_retries: int = math.inf, patience: int = 1
+    ) -> Response:
+        status, retries = None, 0
+        while status != "success" and retries < max_retries:
+            response = self.get_benchmark_job_status(job_id=job_id)
+            status = response.json()["status"]
+
+            if status not in {"success", "running"}:
+                raise RuntimeError(
+                    f"Benchmark job '{job_id}' returned unexpected status '{status}'."
+                )
+            logging.info(f"Results for benchmark job '{job_id}' are not yet available.")
+            retries += 1
+            time.sleep(patience)
+
+        if retries >= max_retries:
+            raise RuntimeError(
+                f"Maximum number of retries ({max_retries}) exceeded while waiting for results of benchmarking job '{job_id}'."
+            )
+
+        return self.get_benchmark_job(job_id=job_id)
 
     def benchmark(
-        self, dataset: list[Path], model: Path, model_metadata: Path, labels: Path
-    ) -> pd.DataFrame:
-        # 1. Upload benchmarking data
-        upload_benchmark_data_response = self._upload_benchmark_data(
+        self,
+        edge_device: str,
+        dataset: list[Path],
+        model_name: str,
+        model: Path,
+        model_metadata: Path,
+        labels: Path,
+        model_version: str = "1",
+        num_classes: int = 0,
+        batch_size: int = 1,
+    ) -> tuple[dict[str, list], list[Any]]:
+        # 1. Upload benchmark data
+        upload_benchmark_data_response = self.upload_benchmark_data(
             dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
         )
 
-        # 2. Get the bucket name of the benchmarking data
+        # 2. Get the bucket name of benchmark data
         benchmark_job_id = upload_benchmark_data_response.json()["bucket_name"]
 
-        # 3. Start a benchmarking job on that bucket
-        start_benchmark_job_response = self._start_benchmark_job(
-            job_id=benchmark_job_id
+        # 3. Start a benchmark job on that bucket
+        self.start_benchmark_job(
+            job_id=benchmark_job_id,
+            inference_server_type="triton",
+            edge_device_config={"host": edge_device},
+            inference_client_config={
+                "host": edge_device,
+                "model_name": model_name,
+                "model_version": model_version,
+                "num_classes": num_classes,
+                "batch_size": batch_size,
+            },
         )
 
-        # 4. Wait (async?) for the benchmarking results to be available
-        benchmark_results_response = self._wait_for_benchmark_results(
-            benchmark_job_id=benchmark_job_id
-        )
+        # 4. Wait for the benchmark results to become available
+        benchmark_job_response = self.get_benchmark_job_results(job_id=benchmark_job_id)
 
-        # 5. Process the benchmarking results (visualize, analyze, ...)
-        benchmark_results_csv = io.BytesIO(benchmark_results_response.content)
-        benchmark_results_df = pd.read_csv(benchmark_results_csv)
+        # 5. Access result fields
+        benchmark_job = benchmark_job_response.json()
+        benchmark_results = benchmark_job["benchmark_results"]
+        inference_results = benchmark_job["inference_results"]
 
-        return benchmark_results_df
+        return benchmark_results, inference_results
