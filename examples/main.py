@@ -2,9 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import os
+import torch
 import numpy as np
+import pandas as pd
+import torch.nn.functional as F
 
 from dotenv import load_dotenv
+from collections import defaultdict
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
 
 if __name__ == "__main__":
@@ -48,18 +52,26 @@ if __name__ == "__main__":
     )
 
     # Benchmark results
-    times = benchmark_results["time"]  # x axis
-    gpu = benchmark_results["GPU"]
-    ram = benchmark_results["RAM"]
-    cpu_temp = benchmark_results["Temp CPU"]
-
-    print(times, gpu, ram, cpu_temp)
+    benchmark_results = pd.DataFrame(benchmark_results)
+    print(benchmark_results)
 
     # Inference results
     inference_results_table = np.stack(inference_results)
 
-    for sample in inference_results_table:
-        logits = sample[:, 0].astype(float)
-        predicted_classes = sample[:, -1]
-        predicted_class = predicted_classes[logits.argmax()]
-        print(predicted_class)
+    final_inference_results = defaultdict(list)
+    for sample_predictions in inference_results_table:
+        logits = sample_predictions[:, 0].astype(float)
+        probabilities = F.softmax(torch.tensor(logits), dim=0)
+
+        predicted_classes = sample_predictions[:, -1]
+        predicted_class_index = probabilities.argmax()
+        predicted_probability = probabilities.max()
+        predicted_class = predicted_classes[predicted_class_index]
+
+        final_inference_results["class"].append(predicted_class)
+        final_inference_results["probability"].append(
+            predicted_probability.item() * 100
+        )
+
+    inference_results_df = pd.DataFrame(final_inference_results)
+    print(inference_results_df)
