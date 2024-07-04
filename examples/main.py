@@ -48,7 +48,8 @@ if __name__ == "__main__":
         model_name=EXAMPLE_ROOT_DIR,
         model_metadata=model_metadata,
         labels=labels,
-        num_classes=1000,
+        num_classes=10,
+        scaling="inception",
     )
 
     # Benchmark results
@@ -56,22 +57,23 @@ if __name__ == "__main__":
     print(benchmark_results)
 
     # Inference results
-    inference_results_table = np.stack(inference_results)
-
     final_inference_results = defaultdict(list)
-    for sample_predictions in inference_results_table:
-        logits = sample_predictions[:, 0].astype(float)
+    for inference_respone_id, inference_result in inference_results.items():
+        predictions = np.stack(inference_result)
+
+        logits = predictions[:, 0].astype(float)
         probabilities = F.softmax(torch.tensor(logits), dim=0)
 
-        predicted_classes = sample_predictions[:, -1]
+        predicted_classes = predictions[:, -1]
         predicted_class_index = probabilities.argmax()
         predicted_probability = probabilities.max()
         predicted_class = predicted_classes[predicted_class_index]
 
+        final_inference_results["response id"].append(inference_respone_id)
         final_inference_results["class"].append(predicted_class)
         final_inference_results["probability"].append(
             predicted_probability.item() * 100
         )
 
-    inference_results_df = pd.DataFrame(final_inference_results)
+        inference_results_df = pd.DataFrame(final_inference_results)
     print(inference_results_df)

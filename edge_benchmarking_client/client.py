@@ -220,7 +220,8 @@ class EdgeBenchmarkingClient:
         model_version: str = "1",
         num_classes: int = 0,
         batch_size: int = 1,
-    ) -> tuple[dict[str, list], list[Any]]:
+        scaling: str | None = None,
+    ) -> tuple[dict[str, list], dict[str, list[Any]]]:
         # 1. Upload benchmark data
         upload_benchmark_data_response = self.upload_benchmark_data(
             dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
@@ -240,6 +241,7 @@ class EdgeBenchmarkingClient:
                 "model_version": model_version,
                 "num_classes": num_classes,
                 "batch_size": batch_size,
+                "scaling": scaling,
             },
         )
 
