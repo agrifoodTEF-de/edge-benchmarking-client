@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import numpy as np
 
 from dotenv import load_dotenv
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
@@ -46,7 +47,19 @@ if __name__ == "__main__":
         num_classes=1000,
     )
 
-    print("Results:", benchmark_results, inference_results)
+    # Benchmark results
+    times = benchmark_results["time"]  # x axis
+    gpu = benchmark_results["GPU"]
+    ram = benchmark_results["RAM"]
+    cpu_temp = benchmark_results["Temp CPU"]
 
-    # Use matplotlib to visualize results
-    # TODO
+    print(times, gpu, ram, cpu_temp)
+
+    # Inference results
+    inference_results_table = np.stack(inference_results)
+
+    for sample in inference_results_table:
+        logits = sample[:, 0].astype(float)
+        predicted_classes = sample[:, -1]
+        predicted_class = predicted_classes[logits.argmax()]
+        print(predicted_class)
