@@ -19,6 +19,7 @@ from pathlib import Path
 from requests import Response
 from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
+    DEVICE,
     BENCHMARK_DATA,
     BENCHMARK_JOB,
 )
@@ -182,6 +183,20 @@ class EdgeBenchmarkingClient:
     def get_benchmark_job_status(self, job_id: str) -> Response:
         response = requests.get(
             url=self._endpoint(BENCHMARK_JOB, job_id, "status"), auth=self.auth
+        )
+        response.raise_for_status()
+        return response
+
+    def get_device_header(self, hostname: str) -> Response:
+        response = requests.get(
+            url=self._endpoint(DEVICE, hostname, "header"), auth=self.auth
+        )
+        response.raise_for_status()
+        return response
+
+    def get_device_info(self, hostname: str) -> Response:
+        response = requests.get(
+            url=self._endpoint(DEVICE, hostname, "info"), auth=self.auth
         )
         response.raise_for_status()
         return response
