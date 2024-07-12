@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch.nn.functional as F
 
+from pprint import pprint
 from dotenv import load_dotenv
 from collections import defaultdict
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
@@ -17,6 +18,7 @@ if __name__ == "__main__":
     # Connection information
     PROTOCOL = "https"
     HOST = "api.edge-farm.agrifood-tef.edvsz.hs-osnabrueck.de"
+    EDGE_DEVICE_HOST = "edge-03"
 
     # Basic API authentication
     BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME")
@@ -30,6 +32,13 @@ if __name__ == "__main__":
         password=BASIC_AUTH_PASSWORD,
     )
 
+    # Fetch device header and info
+    device_header = client.get_device_header(hostname=EDGE_DEVICE_HOST).json()
+    pprint(device_header)
+
+    device_info = client.get_device_info(hostname=EDGE_DEVICE_HOST).json()
+    pprint(device_info)
+
     # Infer benchmarking job components: (dataset, model, model_metadata)
     EXAMPLE_ROOT_DIR = "densenet_onnx"
 
@@ -42,7 +51,7 @@ if __name__ == "__main__":
 
     # Start benchmark
     benchmark_results, inference_results = client.benchmark(
-        edge_device="edge-03",
+        edge_device=EDGE_DEVICE_HOST,
         dataset=dataset,
         model=model,
         model_name=EXAMPLE_ROOT_DIR,
