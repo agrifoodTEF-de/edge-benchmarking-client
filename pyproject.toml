@@ -9,9 +9,9 @@ packages = [{ include = "edge_benchmarking_client" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-requests = "2.32.3"
-validators = "0.28.3"
-python-dotenv = "1.0.1"
+requests = "^2.30"
+validators = "^0.28"
+python-dotenv = "^1.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "24.4.2"
