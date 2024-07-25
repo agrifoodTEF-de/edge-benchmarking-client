@@ -7,10 +7,10 @@ import numpy as np
 import pandas as pd
 import torch.nn.functional as F
 
-from pprint import pprint
 from dotenv import load_dotenv
 from collections import defaultdict
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
+from edge_benchmarking_types.edge_farm.models import TritonInferenceClientConfig
 
 if __name__ == "__main__":
     load_dotenv()
@@ -33,11 +33,11 @@ if __name__ == "__main__":
     )
 
     # Fetch device header and info
-    device_header = client.get_device_header(hostname=EDGE_DEVICE_HOST).json()
-    pprint(device_header)
+    device_header = client.get_device_header(hostname=EDGE_DEVICE_HOST)
+    print(device_header)
 
-    device_info = client.get_device_info(hostname=EDGE_DEVICE_HOST).json()
-    pprint(device_info)
+    device_info = client.get_device_info(hostname=EDGE_DEVICE_HOST)
+    print(device_info)
 
     # Infer benchmarking job components: (dataset, model, model_metadata)
     EXAMPLE_ROOT_DIR = "densenet_onnx"
@@ -49,16 +49,22 @@ if __name__ == "__main__":
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
     labels = client.find_labels(root_dir=EXAMPLE_ROOT_DIR)
 
+    # Create inference client configuration (in this case for Triton)
+    inference_client_config = TritonInferenceClientConfig(
+        host=EDGE_DEVICE_HOST,
+        model_name=EXAMPLE_ROOT_DIR,
+        num_classes=10,
+        scaling="inception",
+    )
+
     # Start benchmark
     benchmark_results, inference_results = client.benchmark(
         edge_device=EDGE_DEVICE_HOST,
         dataset=dataset,
         model=model,
-        model_name=EXAMPLE_ROOT_DIR,
         model_metadata=model_metadata,
         labels=labels,
-        num_classes=10,
-        scaling="inception",
+        inference_client_config=inference_client_config,
     )
 
     # Benchmark results

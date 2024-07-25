@@ -14,14 +14,25 @@ import urllib
 import requests
 import validators
 
-from typing import Any
 from pathlib import Path
 from requests import Response
+from typing import Any, Union, Optional
 from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
     DEVICE,
     BENCHMARK_DATA,
     BENCHMARK_JOB,
+)
+from edge_benchmarking_types.edge_farm.models import (
+    BenchmarkData,
+    EdgeDeviceConfig,
+    TritonInferenceClientConfig,
+)
+from edge_benchmarking_types.edge_device.enums import JobStatus
+from edge_benchmarking_types.edge_device.models import (
+    DeviceInfo,
+    DeviceHeader,
+    BenchmarkJob,
 )
 
 SUPPORTED_MODEL_FORMATS = {".onnx", ".pt", ".pth"}
@@ -133,7 +144,7 @@ class EdgeBenchmarkingClient:
 
     def upload_benchmark_data(
         self, dataset: list[Path], model: Path, model_metadata: Path, labels: Path
-    ) -> Response:
+    ) -> BenchmarkData:
         try:
             benchmark_data_files = [
                 ("dataset", (sample.name, open(sample, "rb"))) for sample in dataset
@@ -148,8 +159,9 @@ class EdgeBenchmarkingClient:
                 auth=self.auth,
             )
             response.raise_for_status()
-            logging.info(f"{response.status_code} - {response.json()}")
-            return response
+            benchmark_data = BenchmarkData.model_validate(response.json())
+            logging.info(f"{response.status_code} - {benchmark_data}")
+            return benchmark_data
         finally:
             for _, (_, fh) in benchmark_data_files:
                 fh.close()
@@ -157,57 +169,63 @@ class EdgeBenchmarkingClient:
     def start_benchmark_job(
         self,
         job_id: str,
-        inference_server_type: str,
-        edge_device_config: dict,
-        inference_client_config: dict,
+        edge_device_config: EdgeDeviceConfig,
+        inference_client_config: Union[TritonInferenceClientConfig],
     ) -> Response:
         response = requests.post(
             url=self._endpoint(BENCHMARK_JOB, job_id, "start"),
             json={
-                "inference_server_type": inference_server_type,
-                "edge_device": edge_device_config,
-                "inference_client": inference_client_config,
+                "edge_device": edge_device_config.model_dump(),
+                "inference_client": inference_client_config.model_dump(),
             },
             auth=self.auth,
         )
         response.raise_for_status()
+        logging.info(f"{response.status_code}")
         return response
 
-    def get_benchmark_job(self, job_id: str) -> Response:
+    def get_benchmark_job(self, job_id: str) -> BenchmarkJob:
         response = requests.get(
             url=self._endpoint(BENCHMARK_JOB, job_id), auth=self.auth
         )
         response.raise_for_status()
-        return response
+        benchmark_job = BenchmarkJob.model_validate(response.json())
+        logging.info(f"{response.status_code} - {benchmark_job}")
+        return benchmark_job
 
-    def get_benchmark_job_status(self, job_id: str) -> Response:
+    def get_benchmark_job_status(self, job_id: str) -> dict[str, JobStatus]:
         response = requests.get(
             url=self._endpoint(BENCHMARK_JOB, job_id, "status"), auth=self.auth
         )
         response.raise_for_status()
-        return response
+        job_status = response.json()
+        logging.info(f"{response.status_code} - {job_status}")
+        return job_status
 
-    def get_device_header(self, hostname: str) -> Response:
+    def get_device_header(self, hostname: str) -> DeviceHeader:
         response = requests.get(
             url=self._endpoint(DEVICE, hostname, "header"), auth=self.auth
         )
         response.raise_for_status()
-        return response
+        device_header = DeviceHeader.model_validate(response.json())
+        logging.info(f"{response.status_code} - {device_header}")
+        return device_header
 
-    def get_device_info(self, hostname: str) -> Response:
+    def get_device_info(self, hostname: str) -> DeviceInfo:
         response = requests.get(
             url=self._endpoint(DEVICE, hostname, "info"), auth=self.auth
         )
         response.raise_for_status()
+        device_info = DeviceInfo.model_validate(response.json())
+        logging.info(f"{response.status_code} - {device_info}")
         return response
 
     def get_benchmark_job_results(
         self, job_id: str, max_retries: int = math.inf, patience: int = 1
-    ) -> Response:
+    ) -> BenchmarkJob:
         status, retries = None, 0
         while status != "success" and retries < max_retries:
-            response = self.get_benchmark_job_status(job_id=job_id)
-            status = response.json()["status"]
+            status = self.get_benchmark_job_status(job_id=job_id)["status"]
 
             if status not in {"success", "running"}:
                 raise RuntimeError(
@@ -228,44 +246,28 @@ class EdgeBenchmarkingClient:
         self,
         edge_device: str,
         dataset: list[Path],
-        model_name: str,
         model: Path,
         model_metadata: Path,
-        labels: Path,
-        model_version: str = "1",
-        num_classes: int = 0,
-        batch_size: int = 1,
-        scaling: str | None = None,
+        inference_client_config: Union[TritonInferenceClientConfig],
+        labels: Optional[Path] = None,
     ) -> tuple[dict[str, list], dict[str, list[Any]]]:
         # 1. Upload benchmark data
-        upload_benchmark_data_response = self.upload_benchmark_data(
+        benchmark_data = self.upload_benchmark_data(
             dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
         )
 
         # 2. Get the bucket name of benchmark data
-        benchmark_job_id = upload_benchmark_data_response.json()["bucket_name"]
+        benchmark_job_id = benchmark_data.bucket_name
 
         # 3. Start a benchmark job on that bucket
         self.start_benchmark_job(
             job_id=benchmark_job_id,
-            inference_server_type="triton",
-            edge_device_config={"host": edge_device},
-            inference_client_config={
-                "host": edge_device,
-                "model_name": model_name,
-                "model_version": model_version,
-                "num_classes": num_classes,
-                "batch_size": batch_size,
-                "scaling": scaling,
-            },
+            edge_device_config=EdgeDeviceConfig(host=edge_device),
+            inference_client_config=inference_client_config,
         )
 
         # 4. Wait for the benchmark results to become available
-        benchmark_job_response = self.get_benchmark_job_results(job_id=benchmark_job_id)
+        benchmark_job = self.get_benchmark_job_results(job_id=benchmark_job_id)
 
-        # 5. Access result fields
-        benchmark_job = benchmark_job_response.json()
-        benchmark_results = benchmark_job["benchmark_results"]
-        inference_results = benchmark_job["inference_results"]
-
-        return benchmark_results, inference_results
+        # 5. Return result fields
+        return benchmark_job.benchmark_results, benchmark_job.inference_results
