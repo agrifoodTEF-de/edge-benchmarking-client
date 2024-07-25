@@ -284,9 +284,9 @@ pydantic = "^2.8"
 
 [package.source]
 type = "git"
-url = "ssh://git@gitlab.hs-osnabrueck.de/agrifood-tef/edge-benchmarking-types.git"
+url = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git"
 reference = "HEAD"
-resolved_reference = "6d7bb4ce8cb3e789ca3da50ee5d7135a76425bd0"
+resolved_reference = "6613308b0ec45fd05669a1a9c91fcb30730fd337"
 
 [[package]]
 name = "filelock"
@@ -1490,4 +1490,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "9cbd71b6ce1b007cba84cd8312cc5b5e5c0f9ce2ff87d12e8144340cbb6debfa"
+content-hash = "e70a4fbbd1e65ce67521b56d2c7cce5c61eea91f9ff3541a347bfbc18a679839"
