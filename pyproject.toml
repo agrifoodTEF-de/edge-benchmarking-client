@@ -16,7 +16,7 @@ edge-benchmarking-types = { git = "https://github.com/agrifoodTEF-de/edge-benchm
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.4"
-numpy = "^2.0"
+numpy = "^1.26"
 matplotlib = "^3.9"
 pandas = "^2.2"
 torch = "^2.3"
