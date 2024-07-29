@@ -16,7 +16,8 @@ import validators
 
 from pathlib import Path
 from requests import Response
-from typing import Any, Union, Optional
+from typing import Any, Union
+from io import BytesIO, IOBase
 from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
     DEVICE,
@@ -142,17 +143,75 @@ class EdgeBenchmarkingClient:
             root_dir=root_dir, extensions={".txt"}, filename=labels_name
         )
 
+    def upload_benchmark_data_bytes(
+        self,
+        dataset: tuple[list[str], list[bytes]],
+        model: tuple[str, bytes],
+        model_metadata: tuple[str, bytes],
+        labels: tuple[str, bytes] | None = None,
+    ):
+        dataset_filenames, dataset_samples = dataset
+        assert len(dataset_filenames) == len(
+            dataset_samples
+        ), "Number of dataset filenames does not match number of samples in dataset."
+
+        benchmark_data_files = [
+            ("dataset", (dataset_filenames[i], sample))
+            for i, sample in enumerate(dataset)
+        ] + [
+            ("model", model),
+            ("model_metadata", model_metadata),
+        ]
+
+        if labels is not None:
+            benchmark_data_files.append(("labels", labels))
+
+        return self._upload_benchmark_data(files=benchmark_data_files)
+
     def upload_benchmark_data(
-        self, dataset: list[Path], model: Path, model_metadata: Path, labels: Path
+        self,
+        dataset: list[Path] | list[tuple[str, BytesIO]],
+        model: Path | tuple[str, BytesIO],
+        model_metadata: Path | tuple[str, BytesIO],
+        labels: Path | tuple[str, BytesIO] | None = None,
     ) -> BenchmarkData:
         try:
-            benchmark_data_files = [
-                ("dataset", (sample.name, open(sample, "rb"))) for sample in dataset
-            ] + [
-                ("model", (model.name, open(model, "rb"))),
-                ("model_metadata", (model_metadata.name, open(model_metadata, "rb"))),
-                ("labels", (labels.name, open(labels, "rb"))),
+            assert len(dataset), "Dataset is empty."
+            dataset_data = [
+                (
+                    "dataset",
+                    (
+                        sample
+                        if isinstance(sample, tuple)
+                        else (sample.name, open(sample, "rb"))
+                    ),
+                )
+                for sample in dataset
             ]
+            model_data = (
+                ("model", model)
+                if isinstance(model, tuple)
+                else ("model", (model.name, open(model, "rb")))
+            )
+            model_metadata = (
+                ("model_metadata", model_metadata)
+                if isinstance(model_metadata, tuple)
+                else (
+                    "model_metadata",
+                    (model_metadata.name, open(model_metadata, "rb")),
+                )
+            )
+
+            benchmark_data_files = dataset_data + [model_data] + [model_metadata]
+
+            if labels is not None:
+                labels_data = (
+                    ("labels", labels)
+                    if isinstance(labels, tuple)
+                    else ("labels", (labels.name, open(labels, "rb")))
+                )
+                benchmark_data_files.append(labels_data)
+
             response = requests.post(
                 url=self._endpoint(BENCHMARK_DATA),
                 files=benchmark_data_files,
@@ -163,8 +222,8 @@ class EdgeBenchmarkingClient:
             logging.info(f"{response.status_code} - {benchmark_data}")
             return benchmark_data
         finally:
-            for _, (_, fh) in benchmark_data_files:
-                fh.close()
+            for _, (_, payload) in benchmark_data_files:
+                payload.close()
 
     def start_benchmark_job(
         self,
@@ -245,11 +304,11 @@ class EdgeBenchmarkingClient:
     def benchmark(
         self,
         edge_device: str,
-        dataset: list[Path],
-        model: Path,
-        model_metadata: Path,
+        dataset: list[Path] | list[tuple[str, BytesIO]],
+        model: Path | tuple[str, BytesIO],
+        model_metadata: Path | tuple[str, BytesIO],
         inference_client_config: Union[TritonInferenceClientConfig],
-        labels: Optional[Path] = None,
+        labels: Path | tuple[str, BytesIO] | None = None,
     ) -> tuple[dict[str, list], dict[str, list[Any]]]:
         # 1. Upload benchmark data
         benchmark_data = self.upload_benchmark_data(
