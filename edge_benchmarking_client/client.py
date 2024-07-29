@@ -252,7 +252,7 @@ class EdgeBenchmarkingClient:
         response.raise_for_status()
         device_info = DeviceInfo.model_validate(response.json())
         logging.info(f"{response.status_code} - {device_info}")
-        return response
+        return device_info
 
     def get_benchmark_job_results(
         self, job_id: str, max_retries: int = math.inf, patience: int = 1
