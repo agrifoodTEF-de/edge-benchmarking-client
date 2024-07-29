@@ -14,10 +14,10 @@ import urllib
 import requests
 import validators
 
+from io import BytesIO
 from pathlib import Path
 from requests import Response
 from typing import Any, Union
-from io import BytesIO, IOBase
 from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
     DEVICE,
@@ -142,31 +142,6 @@ class EdgeBenchmarkingClient:
         return self._find_file(
             root_dir=root_dir, extensions={".txt"}, filename=labels_name
         )
-
-    def upload_benchmark_data_bytes(
-        self,
-        dataset: tuple[list[str], list[bytes]],
-        model: tuple[str, bytes],
-        model_metadata: tuple[str, bytes],
-        labels: tuple[str, bytes] | None = None,
-    ):
-        dataset_filenames, dataset_samples = dataset
-        assert len(dataset_filenames) == len(
-            dataset_samples
-        ), "Number of dataset filenames does not match number of samples in dataset."
-
-        benchmark_data_files = [
-            ("dataset", (dataset_filenames[i], sample))
-            for i, sample in enumerate(dataset)
-        ] + [
-            ("model", model),
-            ("model_metadata", model_metadata),
-        ]
-
-        if labels is not None:
-            benchmark_data_files.append(("labels", labels))
-
-        return self._upload_benchmark_data(files=benchmark_data_files)
 
     def upload_benchmark_data(
         self,
