@@ -150,6 +150,7 @@ class EdgeBenchmarkingClient:
         model_metadata: Path | tuple[str, BytesIO],
         labels: Path | tuple[str, BytesIO] | None = None,
     ) -> BenchmarkData:
+        benchmark_data_files = []
         try:
             assert len(dataset), "Dataset is empty."
             dataset_data = [
