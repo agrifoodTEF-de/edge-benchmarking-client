@@ -34,6 +34,11 @@ class TestEdgeBenchmarkingClient:
             password=BASIC_AUTH_PASSWORD,
         )
 
+    def test_get_welcome_message(self) -> None:
+        welcome_message = self.client.get_welcome_message()
+        assert len(welcome_message) == 1
+        assert "message" in welcome_message
+
     def test_get_device_header(self) -> None:
         device_header = self.client.get_device_header(hostname=EDGE_DEVICE_HOST)
         assert device_header.hostname == EDGE_DEVICE_HOST

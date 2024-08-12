@@ -67,11 +67,8 @@ class EdgeBenchmarkingClient:
         self._test_connection()
 
     def _test_connection(self) -> None:
-        response = requests.get(self.api, auth=self.auth)
-        response.raise_for_status()
-        logging.info(
-            f"Edge Farm API is reachable with status code {response.status_code}."
-        )
+        self.get_welcome_message()
+        logging.info(f"Edge Farm API at '{self.api}' is reachable.")
 
     @staticmethod
     def _collect_files(
@@ -116,6 +113,12 @@ class EdgeBenchmarkingClient:
         if not validators.url(url):
             raise RuntimeError(f"Invalid URL: {url}")
         return url
+
+    def get_welcome_message(self) -> dict[str, str]:
+        response = requests.get(self.api, auth=self.auth)
+        response.raise_for_status()
+        logging.info(f"{response.status_code} - {response.json()}")
+        return response.json()
 
     def find_dataset(self, root_dir: str, file_extensions: set[str]) -> list[Path]:
         sample_filepaths, root_path = self._collect_files(
