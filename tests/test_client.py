@@ -35,7 +35,7 @@ class TestEdgeBenchmarkingClient:
         )
 
     def test_get_welcome_message(self) -> None:
-        welcome_message = self.client.get_welcome_message()
+        welcome_message = self.client.get_welcome_message().json()
         assert len(welcome_message) == 1
         assert "message" in welcome_message
 
