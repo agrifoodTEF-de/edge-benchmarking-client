@@ -152,7 +152,7 @@ class EdgeBenchmarkingClient:
         self,
         dataset: list[Path] | list[tuple[str, BytesIO]],
         model: Path | tuple[str, BytesIO],
-        model_metadata: Path | tuple[str, BytesIO],
+        model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
     ) -> BenchmarkData:
         benchmark_data_files = []
@@ -174,16 +174,19 @@ class EdgeBenchmarkingClient:
                 if isinstance(model, tuple)
                 else ("model", (model.name, open(model, "rb")))
             )
-            model_metadata = (
-                ("model_metadata", model_metadata)
-                if isinstance(model_metadata, tuple)
-                else (
-                    "model_metadata",
-                    (model_metadata.name, open(model_metadata, "rb")),
-                )
-            )
 
-            benchmark_data_files = dataset_data + [model_data] + [model_metadata]
+            benchmark_data_files = dataset_data + [model_data]
+
+            if model_metadata is not None:
+                model_metadata = (
+                    ("model_metadata", model_metadata)
+                    if isinstance(model_metadata, tuple)
+                    else (
+                        "model_metadata",
+                        (model_metadata.name, open(model_metadata, "rb")),
+                    )
+                )
+                benchmark_data_files.append(model_metadata)
 
             if labels is not None:
                 labels_data = (
@@ -287,8 +290,8 @@ class EdgeBenchmarkingClient:
         edge_device: str,
         dataset: list[Path] | list[tuple[str, BytesIO]],
         model: Path | tuple[str, BytesIO],
-        model_metadata: Path | tuple[str, BytesIO],
         inference_client_config: Union[TritonInferenceClientConfig],
+        model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
     ) -> tuple[dict[str, list], dict[str, list[Any]]]:
         # 1. Upload benchmark data
