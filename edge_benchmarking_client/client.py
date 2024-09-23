@@ -303,27 +303,31 @@ class EdgeBenchmarkingClient:
         labels: Path | tuple[str, BytesIO] | None = None,
         cleanup: bool = True,
     ) -> BenchmarkJob:
-        # 1. Upload benchmark data
-        benchmark_data = self.upload_benchmark_data(
-            dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
-        )
+        try:
+            # 1. Upload benchmark data
+            benchmark_data = self.upload_benchmark_data(
+                dataset=dataset,
+                model=model,
+                model_metadata=model_metadata,
+                labels=labels,
+            )
 
-        # 2. Get the bucket name of benchmark data
-        benchmark_job_id = benchmark_data.bucket_name
+            # 2. Get the bucket name of benchmark data
+            benchmark_job_id = benchmark_data.bucket_name
 
-        # 3. Start a benchmark job on that bucket
-        self.start_benchmark_job(
-            job_id=benchmark_job_id,
-            edge_device_config=EdgeDeviceConfig(host=edge_device),
-            inference_client_config=inference_client_config,
-        )
+            # 3. Start a benchmark job on that bucket
+            self.start_benchmark_job(
+                job_id=benchmark_job_id,
+                edge_device_config=EdgeDeviceConfig(host=edge_device),
+                inference_client_config=inference_client_config,
+            )
 
-        # 4. Wait for the benchmark results to become available
-        benchmark_job = self.get_benchmark_job_results(job_id=benchmark_job_id)
+            # 4. Wait for the benchmark results to become available
+            benchmark_job = self.get_benchmark_job_results(job_id=benchmark_job_id)
 
-        # 5. Ensure that all benchmark job artifacts are cleaned up
-        if cleanup:
-            self.remove_benchmark_job(job_id=benchmark_job_id)
-
-        # 6. Return benchmark job containing job id and results
-        return benchmark_job
+            # 5. Return benchmark job containing job id and results
+            return benchmark_job
+        finally:
+            if cleanup:
+                # Ensure that all benchmark job artifacts are cleaned up
+                self.remove_benchmark_job(job_id=benchmark_job_id)
