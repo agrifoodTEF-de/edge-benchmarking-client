@@ -245,6 +245,14 @@ class EdgeBenchmarkingClient:
         logging.info(f"{response.status_code} - {job_status}")
         return job_status
 
+    def remove_benchmark_job(self, job_id: str) -> Response:
+        response = requests.delete(
+            url=self._endpoint(BENCHMARK_JOB, job_id), auth=self.auth
+        )
+        response.raise_for_status()
+        logging.info(f"{response.status_code}")
+        return response
+
     def get_device_header(self, hostname: str) -> DeviceHeader:
         response = requests.get(
             url=self._endpoint(DEVICE, hostname, "header"), auth=self.auth
@@ -293,7 +301,8 @@ class EdgeBenchmarkingClient:
         inference_client_config: Union[TritonInferenceClientConfig],
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
-    ) -> tuple[dict[str, list], dict[str, list[Any]]]:
+        cleanup: bool = True,
+    ) -> BenchmarkJob:
         # 1. Upload benchmark data
         benchmark_data = self.upload_benchmark_data(
             dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
@@ -312,5 +321,9 @@ class EdgeBenchmarkingClient:
         # 4. Wait for the benchmark results to become available
         benchmark_job = self.get_benchmark_job_results(job_id=benchmark_job_id)
 
-        # 5. Return result fields
-        return benchmark_job.benchmark_results, benchmark_job.inference_results
+        # 5. Ensure that all benchmark job artifacts are cleaned up
+        if cleanup:
+            self.remove_benchmark_job(job_id=benchmark_job_id)
+
+        # 6. Return benchmark job containing job id and results
+        return benchmark_job

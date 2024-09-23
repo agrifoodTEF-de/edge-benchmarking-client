@@ -141,6 +141,7 @@ class TestEdgeBenchmarkingClient:
         model: Path | tuple[str, BytesIO],
         model_metadata: Path | tuple[str, BytesIO],
         labels: Path | tuple[str, BytesIO],
+        cleanup: bool = True,
     ) -> None:
         num_classes = 10
         inference_client_config = TritonInferenceClientConfig(
@@ -150,21 +151,22 @@ class TestEdgeBenchmarkingClient:
             scaling="inception",
         )
 
-        benchmark_results, inference_results = self.client.benchmark(
+        benchmark_job = self.client.benchmark(
             edge_device=EDGE_DEVICE_HOST,
             dataset=dataset,
             model=model,
             model_metadata=model_metadata,
             labels=labels,
             inference_client_config=inference_client_config,
+            cleanup=cleanup,
         )
 
         assert all(
             len(predictions) == num_classes
-            for predictions in inference_results.values()
+            for predictions in benchmark_job.inference_results.values()
         )
         assert {"time", "CPU1", "GPU", "RAM", "Temp CPU", "Temp GPU"}.issubset(
-            benchmark_results.keys()
+            benchmark_job.benchmark_results.keys()
         )
 
 

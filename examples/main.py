@@ -58,7 +58,7 @@ if __name__ == "__main__":
     )
 
     # Start benchmark
-    benchmark_results, inference_results = client.benchmark(
+    benchmark_job = client.benchmark(
         edge_device=EDGE_DEVICE_HOST,
         dataset=dataset,
         model=model,
@@ -68,12 +68,12 @@ if __name__ == "__main__":
     )
 
     # Benchmark results
-    benchmark_results = pd.DataFrame(benchmark_results)
+    benchmark_results = pd.DataFrame(benchmark_job.benchmark_results)
     print(benchmark_results)
 
     # Inference results
     final_inference_results = defaultdict(list)
-    for inference_respone_id, inference_result in inference_results.items():
+    for inference_respone_id, inference_result in benchmark_job.inference_results.items():
         predictions = np.stack(inference_result)
 
         logits = predictions[:, 0].astype(float)
