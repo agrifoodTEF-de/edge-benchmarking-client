@@ -10,9 +10,6 @@ from dotenv import load_dotenv
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
 from edge_benchmarking_types.edge_farm.models import TritonInferenceClientConfig
 
-# Connection information
-PROTOCOL = "https"
-HOST = "api.edge-farm.agrifood-tef.edvsz.hs-osnabrueck.de"
 EDGE_DEVICE_HOST = "edge-03"
 
 EXAMPLES_ROOT_DIR = Path("examples")
@@ -24,14 +21,22 @@ class TestEdgeBenchmarkingClient:
         load_dotenv(dotenv_path=EXAMPLES_ROOT_DIR.joinpath(".env"))
 
         # Basic API authentication
-        BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME")
-        BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD")
+        EDGE_FARM_API_BASIC_AUTH_USERNAME = os.getenv(
+            "EDGE_FARM_API_BASIC_AUTH_USERNAME"
+        )
+        EDGE_FARM_API_BASIC_AUTH_PASSWORD = os.getenv(
+            "EDGE_FARM_API_BASIC_AUTH_PASSWORD"
+        )
+
+        # Connection information
+        EDGE_FARM_API_PROTOCOL = os.getenv("EDGE_FARM_API_PROTOCOL")
+        EDGE_FARM_API_HOST = os.getenv("EDGE_FARM_API_HOST")
 
         self.client = EdgeBenchmarkingClient(
-            protocol=PROTOCOL,
-            host=HOST,
-            username=BASIC_AUTH_USERNAME,
-            password=BASIC_AUTH_PASSWORD,
+            protocol=EDGE_FARM_API_PROTOCOL,
+            host=EDGE_FARM_API_HOST,
+            username=EDGE_FARM_API_BASIC_AUTH_USERNAME,
+            password=EDGE_FARM_API_BASIC_AUTH_PASSWORD,
         )
 
     def test_get_welcome_message(self) -> None:

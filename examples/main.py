@@ -15,21 +15,22 @@ from edge_benchmarking_types.edge_farm.models import TritonInferenceClientConfig
 if __name__ == "__main__":
     load_dotenv()
 
-    # Connection information
-    PROTOCOL = "https"
-    HOST = "api.edge-farm.agrifood-tef.edvsz.hs-osnabrueck.de"
     EDGE_DEVICE_HOST = "edge-03"
 
     # Basic API authentication
-    BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME")
-    BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD")
+    EDGE_FARM_API_BASIC_AUTH_USERNAME = os.getenv("EDGE_FARM_API_BASIC_AUTH_USERNAME")
+    EDGE_FARM_API_BASIC_AUTH_PASSWORD = os.getenv("EDGE_FARM_API_BASIC_AUTH_PASSWORD")
+
+    # Connection information
+    EDGE_FARM_API_PROTOCOL = os.getenv("EDGE_FARM_API_PROTOCOL")
+    EDGE_FARM_API_HOST = os.getenv("EDGE_FARM_API_URL")
 
     # Create the client
     client = EdgeBenchmarkingClient(
-        protocol=PROTOCOL,
-        host=HOST,
-        username=BASIC_AUTH_USERNAME,
-        password=BASIC_AUTH_PASSWORD,
+        protocol=EDGE_FARM_API_PROTOCOL,
+        host=EDGE_FARM_API_HOST,
+        username=EDGE_FARM_API_BASIC_AUTH_USERNAME,
+        password=EDGE_FARM_API_BASIC_AUTH_PASSWORD,
     )
 
     # Fetch device header and info
@@ -73,7 +74,10 @@ if __name__ == "__main__":
 
     # Inference results
     final_inference_results = defaultdict(list)
-    for inference_respone_id, inference_result in benchmark_job.inference_results.items():
+    for (
+        inference_respone_id,
+        inference_result,
+    ) in benchmark_job.inference_results.items():
         predictions = np.stack(inference_result)
 
         logits = predictions[:, 0].astype(float)
