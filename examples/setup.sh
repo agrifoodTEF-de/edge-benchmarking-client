@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 
+# In Jupyter Notebook terminal, stop running virutal env
+deactivate
+conda deactivate
+
 set -e
 
-# Download Edge Benchmarking Client and poetry
-git clone https://gitlab.edvsz.hs-osnabrueck.de/agrifood-tef/edge-benchmarking-client
-curl -sSL https://install.python-poetry.org | python3 -
-export PATH="/home/jovyan/.local/bin:$PATH"
-
-# Install
+# Download and install Edge Benchmarking Client
+git clone https://gitlab.edvsz.hs-osnabrueck.de/agrifood-tef/edge-benchmarking-client.git
 cd edge-benchmarking-client
-poetry lock
-poetry install
+pip3 install -e .
+pip3 install torch # to get nn.functional
 
 cd examples
 cp .env.example .env
