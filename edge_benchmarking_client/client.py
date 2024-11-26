@@ -1,3 +1,4 @@
+import os
 import logging
 
 logging.basicConfig(
@@ -196,6 +197,14 @@ class EdgeBenchmarkingClient:
                 )
                 benchmark_data_files.append(labels_data)
 
+            for field_name, (filename, payload) in benchmark_data_files:
+                payload.seek(os.SEEK_END)
+                if not payload.tell():
+                    raise ValueError(
+                        f"Benchmark data file '{(field_name, filename)}' is empty."
+                    )
+                payload.seek(os.SEEK_SET)
+
             response = requests.post(
                 url=self._endpoint(BENCHMARK_DATA),
                 files=benchmark_data_files,
@@ -207,7 +216,9 @@ class EdgeBenchmarkingClient:
             return benchmark_data
         finally:
             for _, (_, payload) in benchmark_data_files:
-                if not isinstance(payload, BytesIO):
+                if isinstance(payload, BytesIO):
+                    payload.seek(os.SEEK_SET)
+                else:
                     payload.close()
 
     def start_benchmark_job(
@@ -304,6 +315,7 @@ class EdgeBenchmarkingClient:
         labels: Path | tuple[str, BytesIO] | None = None,
         cleanup: bool = True,
     ) -> BenchmarkJob:
+        benchmark_job_id = None
         try:
             # 1. Upload benchmark data
             benchmark_data = self.upload_benchmark_data(
@@ -329,6 +341,6 @@ class EdgeBenchmarkingClient:
             # 5. Return benchmark job containing job id and results
             return benchmark_job
         finally:
-            if cleanup:
+            if benchmark_job_id is not None and cleanup:
                 # Ensure that all benchmark job artifacts are cleaned up
                 self.remove_benchmark_job(job_id=benchmark_job_id)

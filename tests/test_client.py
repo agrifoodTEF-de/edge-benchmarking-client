@@ -54,14 +54,14 @@ class TestEdgeBenchmarkingClient:
         assert device_info.platform.system == "Linux"
 
     def test_find_dataset(self) -> None:
-        file_extensions = {".jpg", ".jpeg"}
+        file_extensions = {".JPEG"}
         dataset = self.client.find_dataset(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
             file_extensions=file_extensions,
         )
-        assert len(dataset) == 3
+        assert len(dataset) == 50
         assert {sample.suffix for sample in dataset} <= file_extensions
-        assert all("base_dataset" == sample.parent.name for sample in dataset)
+        assert all("dataset" == sample.parent.name for sample in dataset)
 
     def test_find_model(self) -> None:
         model = self.client.find_model(
@@ -90,7 +90,7 @@ class TestEdgeBenchmarkingClient:
     def test_benchmark_files(self) -> None:
         dataset = self.client.find_dataset(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
-            file_extensions={".jpg", ".jpeg"},
+            file_extensions={".JPEG"},
         )
         model = self.client.find_model(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
@@ -109,7 +109,7 @@ class TestEdgeBenchmarkingClient:
     def test_benchmark_bytes(self) -> None:
         dataset = self.client.find_dataset(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
-            file_extensions={".jpg", ".jpeg"},
+            file_extensions={".JPEG"},
         )
 
         files = {
