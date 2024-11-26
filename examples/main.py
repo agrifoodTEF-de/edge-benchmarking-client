@@ -44,7 +44,8 @@ if __name__ == "__main__":
     EXAMPLE_ROOT_DIR = "densenet_onnx"
 
     dataset = client.find_dataset(
-        root_dir=EXAMPLE_ROOT_DIR, file_extensions={".jpg", ".jpeg"}
+        root_dir=EXAMPLE_ROOT_DIR,
+        file_extensions={".jpg", ".jpeg", ".JPEG", ".JPG", ".png", ".PNG"},
     )
     model = client.find_model(root_dir=EXAMPLE_ROOT_DIR)
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
