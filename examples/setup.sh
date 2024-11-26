@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# In Jupyter Notebook terminal, stop running virutal env
+# In Jupyter Notebook terminal, stop running virtual env
 deactivate
 conda deactivate
 

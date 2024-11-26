@@ -207,7 +207,8 @@ class EdgeBenchmarkingClient:
             return benchmark_data
         finally:
             for _, (_, payload) in benchmark_data_files:
-                payload.close()
+                if not isinstance(payload, BytesIO):
+                    payload.close()
 
     def start_benchmark_job(
         self,
