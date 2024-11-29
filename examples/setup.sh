@@ -7,7 +7,7 @@ conda deactivate
 set -e
 
 # Download and install Edge Benchmarking Client
-git clone https://gitlab.edvsz.hs-osnabrueck.de/agrifood-tef/edge-benchmarking-client.git
+git clone https://github.com/agrifoodTEF-de/edge-benchmarking-client.git
 cd edge-benchmarking-client
 pip3 install -e .
 pip3 install torch # to get nn.functional
