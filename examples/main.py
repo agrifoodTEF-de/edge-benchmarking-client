@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     # Connection information
     EDGE_FARM_API_PROTOCOL = os.getenv("EDGE_FARM_API_PROTOCOL")
-    EDGE_FARM_API_HOST = os.getenv("EDGE_FARM_API_URL")
+    EDGE_FARM_API_HOST = os.getenv("EDGE_FARM_API_HOST")
 
     # Create the client
     client = EdgeBenchmarkingClient(
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     inference_client_config = TritonInferenceClientConfig(
         host=EDGE_DEVICE_HOST,
         model_name=EXAMPLE_ROOT_DIR,
-        num_classes=10,
+        num_classes=1000,
         scaling="inception",
     )
 
