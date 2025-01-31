@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 from dotenv import load_dotenv
 from collections import defaultdict
+from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
 from edge_benchmarking_types.edge_farm.models import TritonInferenceClientConfig
 
@@ -69,31 +70,35 @@ if __name__ == "__main__":
         inference_client_config=inference_client_config,
     )
 
-    # Benchmark results
-    benchmark_results = pd.DataFrame(benchmark_job.benchmark_results)
-    print(benchmark_results)
+    # If benchmark job has failed, read error message
+    if benchmark_job.status == JobStatus.FAILED:
+        print("Benchmark job has failed:", benchmark_job.error)
+    else:
+        # Benchmark results
+        benchmark_results = pd.DataFrame(benchmark_job.benchmark_results)
+        print(benchmark_results)
 
-    # Inference results
-    final_inference_results = defaultdict(list)
-    for (
-        inference_respone_id,
-        inference_result,
-    ) in benchmark_job.inference_results.items():
-        predictions = np.stack(inference_result)
+        # Inference results
+        final_inference_results = defaultdict(list)
+        for (
+            inference_respone_id,
+            inference_result,
+        ) in benchmark_job.inference_results.items():
+            predictions = np.stack(inference_result)
 
-        logits = predictions[:, 0].astype(float)
-        probabilities = F.softmax(torch.tensor(logits), dim=0)
+            logits = predictions[:, 0].astype(float)
+            probabilities = F.softmax(torch.tensor(logits), dim=0)
 
-        predicted_classes = predictions[:, -1]
-        predicted_class_index = probabilities.argmax()
-        predicted_probability = probabilities.max()
-        predicted_class = predicted_classes[predicted_class_index]
+            predicted_classes = predictions[:, -1]
+            predicted_class_index = probabilities.argmax()
+            predicted_probability = probabilities.max()
+            predicted_class = predicted_classes[predicted_class_index]
 
-        final_inference_results["response id"].append(inference_respone_id)
-        final_inference_results["class"].append(predicted_class)
-        final_inference_results["probability"].append(
-            predicted_probability.item() * 100
-        )
+            final_inference_results["response id"].append(inference_respone_id)
+            final_inference_results["class"].append(predicted_class)
+            final_inference_results["probability"].append(
+                predicted_probability.item() * 100
+            )
 
-        inference_results_df = pd.DataFrame(final_inference_results)
-    print(inference_results_df)
+            inference_results_df = pd.DataFrame(final_inference_results)
+        print(inference_results_df)
