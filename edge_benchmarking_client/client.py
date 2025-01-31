@@ -1,4 +1,3 @@
-import os
 import logging
 
 logging.basicConfig(
@@ -17,8 +16,8 @@ import validators
 
 from io import BytesIO
 from pathlib import Path
+from typing import Union
 from requests import Response
-from typing import Any, Union
 from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
     DEVICE,
@@ -109,7 +108,7 @@ class EdgeBenchmarkingClient:
         return filepath
 
     def _endpoint(self, *paths, query: dict | None = None) -> str:
-        url = self.api + os.path.join(*paths)
+        url = self.api + Path(*paths).as_posix()
         if query is not None:
             query_string = urllib.parse.urlencode(query)
             url += f"?{query_string}"
