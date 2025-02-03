@@ -16,7 +16,6 @@ import validators
 
 from io import BytesIO
 from pathlib import Path
-from typing import Union
 from requests import Response
 from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
@@ -25,9 +24,9 @@ from edge_benchmarking_client.endpoints import (
     BENCHMARK_JOB,
 )
 from edge_benchmarking_types.edge_farm.models import (
+    EdgeDevice,
     BenchmarkData,
-    EdgeDeviceConfig,
-    TritonInferenceClientConfig,
+    InferenceClient,
 )
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_types.edge_device.models import (
@@ -223,14 +222,14 @@ class EdgeBenchmarkingClient:
     def start_benchmark_job(
         self,
         job_id: str,
-        edge_device_config: EdgeDeviceConfig,
-        inference_client_config: Union[TritonInferenceClientConfig],
+        edge_device: EdgeDevice,
+        inference_client: InferenceClient,
     ) -> Response:
         response = requests.post(
             url=self._endpoint(BENCHMARK_JOB, job_id, "start"),
             json={
-                "edge_device": edge_device_config.model_dump(),
-                "inference_client": inference_client_config.model_dump(),
+                "edge_device": edge_device.model_dump(),
+                "inference_client": inference_client.model_dump(),
             },
             auth=self.auth,
         )
@@ -309,7 +308,7 @@ class EdgeBenchmarkingClient:
         edge_device: str,
         dataset: list[Path] | list[tuple[str, BytesIO]],
         model: Path | tuple[str, BytesIO],
-        inference_client_config: Union[TritonInferenceClientConfig],
+        inference_client: InferenceClient,
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
         cleanup: bool = True,
@@ -330,8 +329,8 @@ class EdgeBenchmarkingClient:
             # 3. Start a benchmark job on that bucket
             self.start_benchmark_job(
                 job_id=benchmark_job_id,
-                edge_device_config=EdgeDeviceConfig(host=edge_device),
-                inference_client_config=inference_client_config,
+                edge_device=EdgeDevice(host=edge_device),
+                inference_client=inference_client,
             )
 
             # 4. Wait for the benchmark results to become available

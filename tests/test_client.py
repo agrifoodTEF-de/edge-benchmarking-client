@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from dotenv import load_dotenv
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
-from edge_benchmarking_types.edge_farm.models import TritonInferenceClientConfig
+from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
 
 EDGE_DEVICE_HOST = "edge-03"
 
@@ -149,7 +149,7 @@ class TestEdgeBenchmarkingClient:
         cleanup: bool = True,
     ) -> None:
         num_classes = 10
-        inference_client_config = TritonInferenceClientConfig(
+        inference_client = TritonDenseNetClient(
             host=EDGE_DEVICE_HOST,
             model_name=DENSENET_ROOT_DIR,
             num_classes=num_classes,
@@ -162,7 +162,7 @@ class TestEdgeBenchmarkingClient:
             model=model,
             model_metadata=model_metadata,
             labels=labels,
-            inference_client_config=inference_client_config,
+            inference_client=inference_client,
             cleanup=cleanup,
         )
 

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from collections import defaultdict
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
-from edge_benchmarking_types.edge_farm.models import TritonInferenceClientConfig
+from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
 
 if __name__ == "__main__":
     load_dotenv()
@@ -52,8 +52,8 @@ if __name__ == "__main__":
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
     labels = client.find_labels(root_dir=EXAMPLE_ROOT_DIR)
 
-    # Create inference client configuration (in this case for Triton)
-    inference_client_config = TritonInferenceClientConfig(
+    # Create inference client configuration (in this case for Triton with DenseNet model)
+    inference_client = TritonDenseNetClient(
         host=EDGE_DEVICE_HOST,
         model_name=EXAMPLE_ROOT_DIR,
         num_classes=1000,
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         model=model,
         model_metadata=model_metadata,
         labels=labels,
-        inference_client_config=inference_client_config,
+        inference_client=inference_client,
     )
 
     # If benchmark job has failed, read error message
