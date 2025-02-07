@@ -91,7 +91,7 @@ class TestEdgeBenchmarkingClient:
     def test_benchmark_files(self) -> None:
         dataset = self.client.find_dataset(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
-            file_extensions={".JPEG", ".jpg"},
+            file_extensions={".JPEG"},
         )
         model = self.client.find_model(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
@@ -104,13 +104,17 @@ class TestEdgeBenchmarkingClient:
         )
 
         self._test_benchmark(
-            dataset=dataset, model=model, model_metadata=model_metadata, labels=labels
+            dataset=dataset,
+            model=model,
+            model_metadata=model_metadata,
+            labels=labels,
+            chunk_size=10,
         )
 
     def test_benchmark_bytes(self) -> None:
         dataset = self.client.find_dataset(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
-            file_extensions={".JPEG", ".jpg"},
+            file_extensions={".JPEG"},
         )
 
         files = {
@@ -139,6 +143,7 @@ class TestEdgeBenchmarkingClient:
             model=files["model"],
             model_metadata=files["model_metadata"],
             labels=files["labels"],
+            chunk_size=10,
         )
 
     def _test_benchmark(
@@ -148,6 +153,7 @@ class TestEdgeBenchmarkingClient:
         model_metadata: Path | tuple[str, BytesIO],
         labels: Path | tuple[str, BytesIO],
         cleanup: bool = True,
+        chunk_size: int | None = None,
     ) -> None:
         num_classes = 10
         inference_client = TritonDenseNetClient(
@@ -165,6 +171,7 @@ class TestEdgeBenchmarkingClient:
             labels=labels,
             inference_client=inference_client,
             cleanup=cleanup,
+            chunk_size=chunk_size,
         )
 
         assert all(

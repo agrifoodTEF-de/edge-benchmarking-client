@@ -16,6 +16,7 @@ import validators
 
 from io import BytesIO
 from pathlib import Path
+from itertools import islice
 from requests import Response
 from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
@@ -27,6 +28,7 @@ from edge_benchmarking_client.endpoints import (
 )
 from edge_benchmarking_types.edge_farm.models import (
     EdgeDevice,
+    BenchmarkModel,
     BenchmarkData,
     InferenceClient,
 )
@@ -111,8 +113,10 @@ class EdgeBenchmarkingClient:
     def _endpoint(self, *paths, query: dict | None = None) -> str:
         url = self.api + Path(*paths).as_posix()
         if query is not None:
-            query_string = urllib.parse.urlencode(query)
-            url += f"?{query_string}"
+            query = {k: v for k, v in query.items() if v is not None}
+            if query:
+                query_string = urllib.parse.urlencode(query)
+                url += f"?{query_string}"
         if not validators.url(url):
             raise RuntimeError(f"Invalid URL: {url}")
         return url
@@ -149,23 +153,54 @@ class EdgeBenchmarkingClient:
             root_dir=root_dir, extensions={".txt"}, filename=labels_name
         )
 
-    def create_benchmark_bucket(self, bucket_name: str | None = None) -> BenchmarkData:
+    def upload_benchmark_data(
+        self,
+        dataset: list[Path] | list[tuple[str, BytesIO]],
+        model: Path | tuple[str, BytesIO],
+        model_metadata: Path | tuple[str, BytesIO] | None = None,
+        labels: Path | tuple[str, BytesIO] | None = None,
+        chunk_size: int | None = None,
+    ) -> BenchmarkData:
+        # 1. Create benchmark bucket
+        bucket_name: str = self.create_benchmark_bucket()
+
+        # 2. Upload benchmark model data
+        benchmark_model: BenchmarkModel = self.upload_benchmark_model(
+            bucket_name=bucket_name,
+            model=model,
+            model_metadata=model_metadata,
+            labels=labels,
+        )
+
+        # 3. Upload benchmark dataset
+        benchmark_dataset: list[str] = self.upload_benchmark_dataset(
+            bucket_name=bucket_name,
+            dataset=dataset,
+            chunk_size=chunk_size,
+        )
+
+        benchmark_data = BenchmarkData(
+            bucket_name=bucket_name, model=benchmark_model, dataset=benchmark_dataset
+        )
+        return benchmark_data
+
+    def create_benchmark_bucket(self, bucket_name: str | None = None) -> str:
         response = requests.post(
             url=self._endpoint(BENCHMARK_DATA, query={"bucket_name": bucket_name}),
             auth=self.auth,
         )
         response.raise_for_status()
-        benchmark_data = BenchmarkData.model_validate(response.json())
-        logging.info(f"{response.status_code} - {benchmark_data}")
-        return benchmark_data
+        bucket_name = response.json()
+        logging.info(f"{response.status_code} - {bucket_name}")
+        return bucket_name
 
     def upload_benchmark_model(
         self,
-        benchmark_data: BenchmarkData,
+        bucket_name: str,
         model: Path | tuple[str, BytesIO],
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
-    ) -> BenchmarkData:
+    ) -> BenchmarkModel:
         benchmark_model_files = []
         try:
             model_data = (
@@ -173,8 +208,7 @@ class EdgeBenchmarkingClient:
                 if isinstance(model, tuple)
                 else ("model", (model.name, open(model, "rb")))
             )
-
-            benchmark_model_files = model_data
+            benchmark_model_files.append(model_data)
 
             if model_metadata is not None:
                 model_metadata = (
@@ -204,14 +238,16 @@ class EdgeBenchmarkingClient:
                 payload.seek(os.SEEK_SET)
 
             response = requests.patch(
-                url=self._endpoint(BENCHMARK_DATA_MODEL),
+                url=self._endpoint(
+                    BENCHMARK_DATA_MODEL, query={"bucket_name": bucket_name}
+                ),
                 files=benchmark_model_files,
                 auth=self.auth,
             )
             response.raise_for_status()
-            benchmark_data = BenchmarkData.model_validate(response.json())
-            logging.info(f"{response.status_code} - {benchmark_data}")
-            return benchmark_data
+            benchmark_model = BenchmarkModel.model_validate(response.json())
+            logging.info(f"{response.status_code} - {benchmark_model}")
+            return benchmark_model
         finally:
             for _, (_, payload) in benchmark_model_files:
                 if isinstance(payload, BytesIO):
@@ -219,46 +255,59 @@ class EdgeBenchmarkingClient:
                 else:
                     payload.close()
 
-    # TODO: Batch read and upload dataset_data
     def upload_benchmark_dataset(
         self,
-        benchmark_data: BenchmarkData,
+        bucket_name: str,
         dataset: list[Path] | list[tuple[str, BytesIO]],
-        upload_batch_size: int = 100,
-    ) -> BenchmarkData:
-        try:
-            assert len(dataset), "Dataset is empty."
-            dataset_data = [
-                (
-                    "dataset",
-                    (sample if isinstance(sample, tuple) else (sample.name, sample)),
-                )
-                for sample in dataset
+        chunk_size: int | None = None,
+    ) -> list[str]:
+        assert len(dataset), "Dataset is empty."
+        if chunk_size is not None and chunk_size > 1:
+            dataset = [
+                dataset[i : i + chunk_size] for i in range(0, len(dataset), chunk_size)
             ]
-
-            for field_name, (filename, payload) in dataset_data:
-                payload.seek(os.SEEK_END)
-                if not payload.tell():
-                    raise ValueError(
-                        f"Benchmark dataset sample file '{(field_name, filename)}' is empty."
-                    )
-                payload.seek(os.SEEK_SET)
-
-            response = requests.patch(
-                url=self._endpoint(BENCHMARK_DATA_DATASET),
-                files=dataset_data,
-                auth=self.auth,
+            logging.info(
+                f"Uploading dataset in {len(dataset)} chunks of size {chunk_size}."
             )
-            response.raise_for_status()
-            benchmark_data = BenchmarkData.model_validate(response.json())
-            logging.info(f"{response.status_code} - {benchmark_data}")
-            return benchmark_data
-        finally:
-            for _, (_, payload) in dataset_data:
-                if isinstance(payload, BytesIO):
+        else:
+            dataset = [dataset]
+
+        benchmark_dataset = []
+        for chunk in dataset:
+            dataset_data = []
+            try:
+                for sample in chunk:
+                    if not isinstance(sample, tuple):
+                        sample = (sample.name, open(sample, "rb"))
+                    sample = ("dataset", (sample))
+                    dataset_data.append(sample)
+
+                for field_name, (filename, payload) in dataset_data:
+                    payload.seek(os.SEEK_END)
+                    if not payload.tell():
+                        raise ValueError(
+                            f"Benchmark dataset sample file '{(field_name, filename)}' is empty."
+                        )
                     payload.seek(os.SEEK_SET)
-                else:
-                    payload.close()
+
+                response = requests.patch(
+                    url=self._endpoint(
+                        BENCHMARK_DATA_DATASET, query={"bucket_name": bucket_name}
+                    ),
+                    files=dataset_data,
+                    auth=self.auth,
+                )
+                response.raise_for_status()
+                benchmark_dataset_chunk = response.json()
+                logging.info(f"{response.status_code} - {benchmark_dataset_chunk}")
+                benchmark_dataset += benchmark_dataset_chunk
+            finally:
+                for _, (_, payload) in dataset_data:
+                    if isinstance(payload, BytesIO):
+                        payload.seek(os.SEEK_SET)
+                    else:
+                        payload.close()
+        return benchmark_dataset
 
     def start_benchmark_job(
         self,
@@ -352,41 +401,34 @@ class EdgeBenchmarkingClient:
         inference_client: InferenceClient,
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
+        chunk_size: int | None = None,
         cleanup: bool = True,
     ) -> BenchmarkJob:
         benchmark_job_id = None
         try:
-            # 1. Create benchmark bucket
-            benchmark_data = self.create_benchmark_bucket()
-
-            # 2. Upload benchmark model artifacts
-            benchmark_data = self.upload_benchmark_model(
-                benchmark_data=benchmark_data,
+            # 1. Upload benchmark data
+            benchmark_data = self.upload_benchmark_data(
+                dataset=dataset,
                 model=model,
                 model_metadata=model_metadata,
                 labels=labels,
+                chunk_size=chunk_size,
             )
 
-            # 3. Upload benchmark dataset
-            benchmark_data = self.upload_benchmark_dataset(
-                benchmark_data=benchmark_data,
-                dataset=dataset,
-            )
-
-            # 4. Get the bucket name of benchmark data
+            # 2. Get the bucket name of benchmark data
             benchmark_job_id = benchmark_data.bucket_name
 
-            # 5. Start a benchmark job on that bucket
+            # 3. Start a benchmark job on that bucket
             self.start_benchmark_job(
                 job_id=benchmark_job_id,
                 edge_device=EdgeDevice(host=edge_device),
                 inference_client=inference_client,
             )
 
-            # 6. Wait for the benchmark results to become available
+            # 4. Wait for the benchmark results to become available
             benchmark_job = self.get_benchmark_job_results(job_id=benchmark_job_id)
 
-            # 7. Return benchmark job containing job id and results
+            # 5. Return benchmark job containing job id and results
             return benchmark_job
         finally:
             if benchmark_job_id is not None and cleanup:
