@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+
 import os
 import pytest
 
@@ -90,7 +91,7 @@ class TestEdgeBenchmarkingClient:
     def test_benchmark_files(self) -> None:
         dataset = self.client.find_dataset(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
-            file_extensions={".JPEG"},
+            file_extensions={".JPEG", ".jpg"},
         )
         model = self.client.find_model(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
@@ -109,7 +110,7 @@ class TestEdgeBenchmarkingClient:
     def test_benchmark_bytes(self) -> None:
         dataset = self.client.find_dataset(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
-            file_extensions={".JPEG"},
+            file_extensions={".JPEG", ".jpg"},
         )
 
         files = {
