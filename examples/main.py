@@ -46,7 +46,8 @@ if __name__ == "__main__":
 
     dataset = client.find_dataset(
         root_dir=EXAMPLE_ROOT_DIR,
-        file_extensions={".jpg", ".jpeg", ".JPEG", ".JPG", ".png", ".PNG"},
+        # file_extensions={".jpg", ".jpeg", ".JPEG", ".JPG", ".png", ".PNG"},
+        file_extensions={".JPEG"},
     )
     model = client.find_model(root_dir=EXAMPLE_ROOT_DIR)
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
@@ -68,6 +69,7 @@ if __name__ == "__main__":
         model_metadata=model_metadata,
         labels=labels,
         inference_client=inference_client,
+        chunk_size=10,
     )
 
     # If benchmark job has failed, read error message

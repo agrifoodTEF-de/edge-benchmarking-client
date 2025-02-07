@@ -83,7 +83,7 @@ class EdgeBenchmarkingClient:
         root_path = Path(root_dir).expanduser().resolve()
         for ext in file_extensions:
             filepaths.extend(root_path.rglob(f"*{ext}"))
-        return filepaths, root_path
+        return sorted(filepaths), root_path
 
     def _find_file(
         self, root_dir: str, extensions: set[str], filename: str | None = None
