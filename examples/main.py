@@ -85,7 +85,7 @@ if __name__ == "__main__":
         for (
             inference_respone_id,
             inference_result,
-        ) in benchmark_job.inference_results.items():
+        ) in benchmark_job.inference_results.inference.items():
             predictions = np.stack(inference_result)
 
             logits = predictions[:, 0].astype(float)
