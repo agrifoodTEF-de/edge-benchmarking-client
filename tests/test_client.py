@@ -88,11 +88,23 @@ class TestEdgeBenchmarkingClient:
         assert labels.suffix == ".txt"
         assert labels.parent.name == "model"
 
-    def test_benchmark_files(self) -> None:
+    def test_benchmark_dataset_jpeg(self) -> None:
         dataset = self.client.find_dataset(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
             file_extensions={".JPEG"},
         )
+        self._benchmark_files_dataset(dataset)
+        self._benchmark_bytes_dataset(dataset)
+
+    def test_benchmark_dataset_archives(self) -> None:
+        dataset = self.client.find_dataset(
+            root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
+            file_extensions={".zip", ".tar"},
+        )
+        self._benchmark_files_dataset(dataset)
+        self._benchmark_bytes_dataset(dataset)
+
+    def _benchmark_files_dataset(self, dataset: list[Path]) -> None:
         model = self.client.find_model(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
         )
@@ -111,12 +123,7 @@ class TestEdgeBenchmarkingClient:
             chunk_size=10,
         )
 
-    def test_benchmark_bytes(self) -> None:
-        dataset = self.client.find_dataset(
-            root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
-            file_extensions={".JPEG"},
-        )
-
+    def _benchmark_bytes_dataset(self, dataset: list[Path]) -> None:
         files = {
             "model": self.client.find_model(
                 root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
@@ -143,7 +150,6 @@ class TestEdgeBenchmarkingClient:
             model=files["model"],
             model_metadata=files["model_metadata"],
             labels=files["labels"],
-            chunk_size=10,
         )
 
     def _test_benchmark(
