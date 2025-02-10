@@ -167,6 +167,7 @@ class TestEdgeBenchmarkingClient:
             model_name=DENSENET_ROOT_DIR,
             num_classes=num_classes,
             scaling="inception",
+            num_workers=2,
         )
 
         benchmark_job = self.client.benchmark(
