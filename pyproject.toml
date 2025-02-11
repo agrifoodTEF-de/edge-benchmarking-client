@@ -9,18 +9,18 @@ packages = [{ include = "edge_benchmarking_client" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-requests = "^2.30"
-validators = "^0.28"
-python-dotenv = "^1.0"
+requests = "2.32.3"
+validators = "0.34.0"
+python-dotenv = "1.0.1"
 edge-benchmarking-types = { git = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git" }
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.4"
-numpy = "^1.26"
-matplotlib = "^3.9"
-pandas = "^2.2"
-torch = "^2.3"
-pytest = "^8.3"
+black = "25.1.0"
+numpy = "1.26.4"
+matplotlib = "3.10.0"
+pandas = "2.2.3"
+torch = "2.6.0"
+pytest = "8.3.4"
 
 [tool.pytest.ini_options]
 log_cli = true
