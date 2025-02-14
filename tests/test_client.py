@@ -183,7 +183,7 @@ class TestEdgeBenchmarkingClient:
 
         assert all(
             len(predictions) == num_classes
-            for predictions in benchmark_job.inference_results.inference.values()
+            for predictions in benchmark_job.inference_results.results.values()
         )
         assert {"time", "CPU1", "GPU", "RAM", "Temp CPU", "Temp GPU"}.issubset(
             benchmark_job.benchmark_results.keys()
