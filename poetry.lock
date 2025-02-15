@@ -292,13 +292,13 @@ files = []
 develop = false
 
 [package.dependencies]
-pydantic = "^2.8"
+pydantic = "2.10.6"
 
 [package.source]
 type = "git"
 url = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git"
 reference = "HEAD"
-resolved_reference = "9bc4b3207c4841c4d31d8ff42475455b3304dca6"
+resolved_reference = "8571066132ec414108ddc0e4907ea89da3096caa"
 
 [[package]]
 name = "exceptiongroup"
