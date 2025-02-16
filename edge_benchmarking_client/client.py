@@ -293,6 +293,7 @@ class EdgeBenchmarkingClient:
         job_id: str,
         edge_device: EdgeDevice,
         inference_client: InferenceClient,
+        cpu_only: bool = False,
     ) -> Response:
         response = requests.post(
             url=self._endpoint(BENCHMARK_JOB, job_id, "start"),
@@ -412,6 +413,7 @@ class EdgeBenchmarkingClient:
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
         chunk_size: int | None = None,
+        cpu_only: bool = False,
         cleanup: bool = True,
     ) -> BenchmarkJob:
         benchmark_job_id = None
@@ -431,6 +433,7 @@ class EdgeBenchmarkingClient:
             # 3. Start a benchmark job on that bucket
             self.start_benchmark_job(
                 job_id=benchmark_job_id,
+                cpu_only=cpu_only,
                 edge_device=EdgeDevice(host=edge_device),
                 inference_client=inference_client,
             )

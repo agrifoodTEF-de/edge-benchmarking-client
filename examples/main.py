@@ -70,6 +70,7 @@ if __name__ == "__main__":
         labels=labels,
         inference_client=inference_client,
         chunk_size=10,
+        cpu_only=False,
     )
 
     # If benchmark job has failed, read error message
@@ -85,7 +86,7 @@ if __name__ == "__main__":
         for (
             inference_respone_id,
             inference_result,
-        ) in benchmark_job.inference_results.inference.items():
+        ) in benchmark_job.inference_results.results.items():
             predictions = np.stack(inference_result)
 
             logits = predictions[:, 0].astype(float)
