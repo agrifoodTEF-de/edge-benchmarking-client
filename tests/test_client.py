@@ -150,6 +150,7 @@ class TestEdgeBenchmarkingClient:
             model=files["model"],
             model_metadata=files["model_metadata"],
             labels=files["labels"],
+            cpu_only=False,
         )
 
     def _test_benchmark(
@@ -160,6 +161,7 @@ class TestEdgeBenchmarkingClient:
         labels: Path | tuple[str, BytesIO],
         cleanup: bool = True,
         chunk_size: int | None = None,
+        cpu_only: bool = False,
     ) -> None:
         num_classes = 10
         inference_client = TritonDenseNetClient(
@@ -179,6 +181,7 @@ class TestEdgeBenchmarkingClient:
             inference_client=inference_client,
             cleanup=cleanup,
             chunk_size=chunk_size,
+            cpu_only=cpu_only,
         )
 
         assert all(
