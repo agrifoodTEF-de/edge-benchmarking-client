@@ -12,9 +12,11 @@ from edge_benchmarking_client.client import EdgeBenchmarkingClient
 from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
 
 EDGE_DEVICE_HOST = "edge-03"
+# EDGE_DEVICE_HOST = "edge-09"
 
 EXAMPLES_ROOT_DIR = Path("examples")
 DENSENET_ROOT_DIR = "densenet_onnx"
+# DENSENET_ROOT_DIR = "yolov11_onnx"
 
 
 class TestEdgeBenchmarkingClient:
@@ -169,7 +171,7 @@ class TestEdgeBenchmarkingClient:
             model_name=DENSENET_ROOT_DIR,
             num_classes=num_classes,
             scaling="inception",
-            num_workers=2,
+            samples_per_second=10,
         )
 
         benchmark_job = self.client.benchmark(
