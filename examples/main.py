@@ -59,6 +59,7 @@ if __name__ == "__main__":
         model_name=EXAMPLE_ROOT_DIR,
         num_classes=1000,
         scaling="inception",
+        samples_per_second=10,
     )
 
     # Start benchmark
