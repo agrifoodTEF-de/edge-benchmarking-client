@@ -300,6 +300,7 @@ class EdgeBenchmarkingClient:
             json={
                 "edge_device": edge_device.model_dump(),
                 "inference_client": inference_client.model_dump(),
+                "cpu_only": cpu_only,
             },
             auth=self.auth,
         )
