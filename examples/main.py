@@ -55,11 +55,16 @@ if __name__ == "__main__":
 
     # Create inference client configuration (in this case for Triton with DenseNet model)
     inference_client = TritonDenseNetClient(
+        protocol="http",
         host=EDGE_DEVICE_HOST,
+        port=8000,
+        num_workers=1,
+        samples_per_second=10,
+        warm_up=False,
         model_name=EXAMPLE_ROOT_DIR,
+        batch_size=1,
         num_classes=1000,
         scaling="inception",
-        samples_per_second=10,
     )
 
     # Start benchmark
@@ -72,6 +77,7 @@ if __name__ == "__main__":
         inference_client=inference_client,
         chunk_size=10,
         cpu_only=False,
+        cleanup=True,
     )
 
     # If benchmark job has failed, read error message

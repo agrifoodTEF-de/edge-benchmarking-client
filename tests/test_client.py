@@ -163,15 +163,27 @@ class TestEdgeBenchmarkingClient:
         labels: Path | tuple[str, BytesIO],
         cleanup: bool = True,
         chunk_size: int | None = None,
+        protocol: str = "http",
+        port: int | None = 8000,
+        batch_size: int = 1,
         cpu_only: bool = False,
+        num_workers: int = 1,
+        samples_per_second: float | None = 10,
+        warm_up: bool = False,
+        num_classes: int = 10,
+        scaling: str | None = "inception",
     ) -> None:
-        num_classes = 10
         inference_client = TritonDenseNetClient(
+            protocol=protocol,
             host=EDGE_DEVICE_HOST,
+            port=port,
+            num_workers=num_workers,
+            samples_per_second=samples_per_second,
+            warm_up=warm_up,
             model_name=DENSENET_ROOT_DIR,
+            batch_size=batch_size,
             num_classes=num_classes,
-            scaling="inception",
-            samples_per_second=10,
+            scaling=scaling,
         )
 
         benchmark_job = self.client.benchmark(
