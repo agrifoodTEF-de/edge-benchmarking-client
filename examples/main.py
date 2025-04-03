@@ -62,6 +62,7 @@ if __name__ == "__main__":
         samples_per_second=10,
         warm_up=False,
         model_name=EXAMPLE_ROOT_DIR,
+        model_version="1",
         batch_size=1,
         num_classes=1000,
         scaling="inception",
