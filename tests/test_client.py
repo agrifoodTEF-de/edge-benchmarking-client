@@ -9,7 +9,12 @@ from io import BytesIO
 from pathlib import Path
 from dotenv import load_dotenv
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
-from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
+from edge_benchmarking_types.edge_farm.models import (
+    TritonDenseNetClient,
+    ExternalDataProvider,
+    OakClient,
+)
+from edge_benchmarking_types.edge_farm.enums import OakImageResolution
 
 EDGE_DEVICE_HOST = "edge-03"
 # EDGE_DEVICE_HOST = "edge-09"
@@ -17,6 +22,10 @@ EDGE_DEVICE_HOST = "edge-03"
 EXAMPLES_ROOT_DIR = Path("examples")
 DENSENET_ROOT_DIR = "densenet_onnx"
 # DENSENET_ROOT_DIR = "yolov11_onnx"
+CAPTURE_ROOT_DIR = EXAMPLES_ROOT_DIR.joinpath("capture")
+
+OAK_CAMERA_IP = "192.168.1.100"
+OAK_MAX_SAMPLE_SIZE = 10
 
 
 class TestEdgeBenchmarkingClient:
@@ -106,6 +115,20 @@ class TestEdgeBenchmarkingClient:
         self._benchmark_files_dataset(dataset)
         self._benchmark_bytes_dataset(dataset)
 
+    def test_benchmark_dataset_capture_oak(self) -> None:
+        oak_client = OakClient(
+            ip=OAK_CAMERA_IP, rgb_resolution=OakImageResolution.THE_1080P, warmup=3
+        )
+        external_data_provider = ExternalDataProvider(
+            client=oak_client,
+            max_sample_size=OAK_MAX_SAMPLE_SIZE,
+        )
+        dataset = self.client.capture_benchmark_data(
+            root_dir=CAPTURE_ROOT_DIR, external_data_provider=external_data_provider
+        )
+        self._benchmark_files_dataset([dataset])
+        self._benchmark_bytes_dataset([dataset])
+
     def _benchmark_files_dataset(self, dataset: list[Path]) -> None:
         model = self.client.find_model(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
@@ -181,6 +204,7 @@ class TestEdgeBenchmarkingClient:
             samples_per_second=samples_per_second,
             warm_up=warm_up,
             model_name=DENSENET_ROOT_DIR,
+            model_version="1",
             batch_size=batch_size,
             num_classes=num_classes,
             scaling=scaling,

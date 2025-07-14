@@ -17,19 +17,23 @@ import validators
 from io import BytesIO
 from pathlib import Path
 from requests import Response
+from email.parser import HeaderParser
 from requests.auth import HTTPBasicAuth
+
 from edge_benchmarking_client.endpoints import (
     DEVICE,
     BENCHMARK_JOB,
     BENCHMARK_DATA,
     BENCHMARK_DATA_MODEL,
     BENCHMARK_DATA_DATASET,
+    BENCHMARK_DATA_DATASET_CAPTURE,
 )
 from edge_benchmarking_types.edge_farm.models import (
     EdgeDevice,
     BenchmarkModel,
     BenchmarkData,
     InferenceClient,
+    ExternalDataProvider,
 )
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_types.edge_device.models import (
@@ -76,13 +80,14 @@ class EdgeBenchmarkingClient:
 
     @staticmethod
     def _collect_files(
-        root_dir: str, file_extensions: set[str]
+        root_dir: str, file_extensions: set[str] | None
     ) -> tuple[list[Path], Path]:
-        filepaths = []
         root_path = Path(root_dir).expanduser().resolve()
-        for ext in file_extensions:
-            filepaths.extend(root_path.rglob(f"*{ext}"))
-        return sorted(filepaths), root_path
+        patterns = {f"*{ext}" for ext in file_extensions} if file_extensions else {"*"}
+        filepaths = sorted(
+            {p for pattern in patterns for p in root_path.rglob(pattern)}
+        )
+        return filepaths, root_path
 
     def _find_file(
         self, root_dir: str, extensions: set[str], filename: str | None = None
@@ -256,12 +261,15 @@ class EdgeBenchmarkingClient:
 
         return filepaths
 
-    def find_dataset(self, root_dir: str, file_extensions: set[str]) -> list[Path]:
+    def find_dataset(
+        self, root_dir: str, file_extensions: set[str] | None = None
+    ) -> list[Path]:
         sample_filepaths, root_path = self._collect_files(
             root_dir=root_dir, file_extensions=file_extensions
         )
         logging.info(
-            f"Found dataset containing {len(sample_filepaths)} samples with type(s) {file_extensions} in '{root_path}'."
+            f"Found dataset containing {len(sample_filepaths)} samples"
+            f"{f' with type(s) {file_extensions}' if file_extensions else ''} in '{root_path}'."
         )
         return sample_filepaths
 
@@ -281,6 +289,42 @@ class EdgeBenchmarkingClient:
         return self._find_file(
             root_dir=root_dir, extensions={".txt"}, filename=labels_name
         )
+
+    def capture_benchmark_data(
+        self,
+        root_dir: Path,
+        external_data_provider: ExternalDataProvider,
+        chunk_size: int = 8192,
+    ) -> Path:
+        with requests.post(
+            url=self._endpoint(BENCHMARK_DATA_DATASET_CAPTURE),
+            json=external_data_provider.model_dump(),
+            auth=self.auth,
+            stream=True,
+        ) as response:
+            response.raise_for_status()
+            content_disposition = response.headers.get("Content-Disposition")
+
+            def get_filename(content_disposition: str | None) -> str:
+                default_filename = "dataset.zip"
+                if not content_disposition:
+                    return default_filename
+                parser = HeaderParser()
+                headers = parser.parsestr(
+                    f"Content-Disposition: {content_disposition}\n"
+                )
+                return headers.get_param(
+                    "filename", header="Content-Disposition", failobj=default_filename
+                )
+
+            zip_filename = get_filename(content_disposition)
+            zip_filepath = root_dir.joinpath(zip_filename)
+            root_dir.mkdir(parents=True, exist_ok=True)
+            with open(zip_filepath, "wb") as fh:
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        fh.write(chunk)
+        return zip_filepath
 
     def get_welcome_message(self) -> Response:
         response = requests.get(self.api, auth=self.auth)
