@@ -123,11 +123,11 @@ class TestEdgeBenchmarkingClient:
             client=oak_client,
             max_sample_size=OAK_MAX_SAMPLE_SIZE,
         )
-        dataset = self.client.capture_benchmark_data(
+        dataset = self.client.capture_dataset(
             root_dir=CAPTURE_ROOT_DIR, external_data_provider=external_data_provider
         )
-        self._benchmark_files_dataset([dataset])
-        self._benchmark_bytes_dataset([dataset])
+        self._benchmark_files_dataset(dataset)
+        self._benchmark_bytes_dataset(dataset)
 
     def _benchmark_files_dataset(self, dataset: list[Path]) -> None:
         model = self.client.find_model(

@@ -7,11 +7,17 @@ import numpy as np
 import pandas as pd
 import torch.nn.functional as F
 
+from pathlib import Path
 from dotenv import load_dotenv
 from collections import defaultdict
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
-from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
+from edge_benchmarking_types.edge_farm.enums import OakImageResolution
+from edge_benchmarking_types.edge_farm.models import (
+    TritonDenseNetClient,
+    ExternalDataProvider,
+    OakClient,
+)
 
 if __name__ == "__main__":
     load_dotenv()
@@ -41,14 +47,34 @@ if __name__ == "__main__":
     device_info = client.get_device_info(hostname=EDGE_DEVICE_HOST)
     print(device_info)
 
+    # Upload a dataset from disk or use external sensor (camera, etc.)?
+    USE_LOCAL_DATASET = True
+
     # Infer benchmarking job components: (dataset, model, model_metadata)
     EXAMPLE_ROOT_DIR = "densenet_onnx"
 
-    dataset = client.find_dataset(
-        root_dir=EXAMPLE_ROOT_DIR,
-        # file_extensions={".jpg", ".jpeg", ".JPEG", ".JPG", ".png", ".PNG"},
-        file_extensions={".JPEG"},
-    )
+    if USE_LOCAL_DATASET:
+        dataset = client.find_dataset(
+            root_dir=EXAMPLE_ROOT_DIR,
+            # file_extensions={".jpg", ".jpeg", ".JPEG", ".JPG", ".png", ".PNG"},
+            file_extensions={".JPEG"},
+        )
+    else:
+        OAK_CAMERA_IP = "192.168.1.100"
+        OAK_MAX_SAMPLE_SIZE = 10
+        CAPTURE_ROOT_DIR = Path("capture")
+
+        oak_client = OakClient(
+            ip=OAK_CAMERA_IP, rgb_resolution=OakImageResolution.THE_1080P, warmup=3
+        )
+        external_data_provider = ExternalDataProvider(
+            client=oak_client,
+            max_sample_size=OAK_MAX_SAMPLE_SIZE,
+        )
+        dataset = client.capture_dataset(
+            root_dir=CAPTURE_ROOT_DIR, external_data_provider=external_data_provider
+        )
+
     model = client.find_model(root_dir=EXAMPLE_ROOT_DIR)
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
     labels = client.find_labels(root_dir=EXAMPLE_ROOT_DIR)
