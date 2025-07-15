@@ -62,7 +62,7 @@ if __name__ == "__main__":
     else:
         OAK_CAMERA_IP = "192.168.1.100"
         OAK_MAX_SAMPLE_SIZE = 10
-        CAPTURE_ROOT_DIR = Path("capture")
+        CAPTURE_ROOT_DIR = "capture"
 
         oak_client = OakClient(
             ip=OAK_CAMERA_IP, rgb_resolution=OakImageResolution.THE_1080P, warmup=3

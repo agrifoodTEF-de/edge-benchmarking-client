@@ -292,10 +292,11 @@ class EdgeBenchmarkingClient:
 
     def capture_dataset(
         self,
-        root_dir: Path,
+        root_dir: str | Path,
         external_data_provider: ExternalDataProvider,
         chunk_size: int = 8192,
     ) -> list[Path]:
+        root_dir = Path(root_dir).expanduser().resolve()
         with requests.post(
             url=self._endpoint(BENCHMARK_DATA_DATASET_CAPTURE),
             json=external_data_provider.model_dump(),
@@ -320,6 +321,7 @@ class EdgeBenchmarkingClient:
             zip_filename = get_filename(content_disposition)
             zip_filepath = root_dir.joinpath(zip_filename)
             root_dir.mkdir(parents=True, exist_ok=True)
+
             with open(zip_filepath, "wb") as fh:
                 for chunk in response.iter_content(chunk_size=chunk_size):
                     if chunk:
