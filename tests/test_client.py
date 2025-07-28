@@ -8,6 +8,7 @@ import pytest
 from io import BytesIO
 from pathlib import Path
 from dotenv import load_dotenv
+from requests import codes, HTTPError
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
 from edge_benchmarking_types.sensors.models import Sensor, OakClient
 from edge_benchmarking_types.sensors.enums import OakImageResolution
@@ -22,6 +23,7 @@ DENSENET_ROOT_DIR = "densenet_onnx"
 # DENSENET_ROOT_DIR = "yolov11_onnx"
 CAPTURE_ROOT_DIR = EXAMPLES_ROOT_DIR.joinpath("capture")
 
+SENSOR_HOSTNAME_NOT_EXISTING = "does-not-exist"
 OAK_CAMERA_HOSTNAME = "cam-01"
 OAK_CAMERA_IP = "192.168.1.100"
 OAK_MAX_SAMPLE_SIZE = 10
@@ -68,6 +70,12 @@ class TestEdgeBenchmarkingClient:
     def test_get_sensor(self) -> None:
         sensor = self.client.get_sensor(hostname=OAK_CAMERA_HOSTNAME)
         assert sensor.hostname == OAK_CAMERA_HOSTNAME
+
+    def test_get_sensor_not_found(self) -> None:
+        try:
+            self.client.get_sensor(hostname=SENSOR_HOSTNAME_NOT_EXISTING)
+        except HTTPError as e:
+            assert e.response.status_code == codes.not_found
 
     def test_get_device_info(self) -> None:
         device_info = self.client.get_device_info(hostname=EDGE_DEVICE_HOST)
