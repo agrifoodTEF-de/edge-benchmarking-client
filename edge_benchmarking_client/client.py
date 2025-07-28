@@ -409,9 +409,9 @@ class EdgeBenchmarkingClient:
     def get_sensor(self, hostname: str) -> SensorInfo:
         response = requests.get(url=self._endpoint(SENSOR, hostname), auth=self.auth)
         response.raise_for_status()
-        sensors = SensorInfo.model_validate(response.json())
-        logging.info(f"{response.status_code} - {sensors}")
-        return sensors
+        sensor = SensorInfo.model_validate(response.json())
+        logging.info(f"{response.status_code} - {sensor}")
+        return sensor
 
     def get_benchmark_job_results(
         self, job_id: str, max_retries: int = math.inf, patience: int = 1
