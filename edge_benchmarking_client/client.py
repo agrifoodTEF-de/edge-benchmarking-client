@@ -23,17 +23,17 @@ from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
     DEVICE,
     BENCHMARK_JOB,
+    SENSOR,
+    SENSOR_CAPTURE,
     BENCHMARK_DATA,
     BENCHMARK_DATA_MODEL,
     BENCHMARK_DATA_DATASET,
-    BENCHMARK_DATA_DATASET_CAPTURE,
 )
 from edge_benchmarking_types.edge_farm.models import (
     EdgeDevice,
     BenchmarkModel,
     BenchmarkData,
     InferenceClient,
-    ExternalDataProvider,
 )
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_types.edge_device.models import (
@@ -41,6 +41,7 @@ from edge_benchmarking_types.edge_device.models import (
     DeviceHeader,
     BenchmarkJob,
 )
+from edge_benchmarking_types.sensors.models import Sensor, SensorInfo
 
 SUPPORTED_MODEL_FORMATS = {".onnx", ".pt", ".pth"}
 
@@ -293,13 +294,13 @@ class EdgeBenchmarkingClient:
     def capture_dataset(
         self,
         root_dir: str | Path,
-        external_data_provider: ExternalDataProvider,
+        sensor: Sensor,
         chunk_size: int = 8192,
     ) -> list[Path]:
         root_dir = Path(root_dir).expanduser().resolve()
         with requests.post(
-            url=self._endpoint(BENCHMARK_DATA_DATASET_CAPTURE),
-            json=external_data_provider.model_dump(),
+            url=self._endpoint(SENSOR_CAPTURE),
+            json=sensor.model_dump(),
             auth=self.auth,
             stream=True,
         ) as response:
@@ -397,6 +398,20 @@ class EdgeBenchmarkingClient:
         device_info = DeviceInfo.model_validate(response.json())
         logging.info(f"{response.status_code} - {device_info}")
         return device_info
+
+    def get_sensors(self) -> list[SensorInfo]:
+        response = requests.get(url=self._endpoint(SENSOR), auth=self.auth)
+        response.raise_for_status()
+        sensors = [SensorInfo.model_validate(sensor) for sensor in response.json()]
+        logging.info(f"{response.status_code} - {sensors}")
+        return sensors
+
+    def get_sensor(self, hostname: str) -> SensorInfo:
+        response = requests.get(url=self._endpoint(SENSOR, hostname), auth=self.auth)
+        response.raise_for_status()
+        sensors = SensorInfo.model_validate(response.json())
+        logging.info(f"{response.status_code} - {sensors}")
+        return sensors
 
     def get_benchmark_job_results(
         self, job_id: str, max_retries: int = math.inf, patience: int = 1

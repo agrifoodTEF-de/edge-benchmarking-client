@@ -7,17 +7,13 @@ import numpy as np
 import pandas as pd
 import torch.nn.functional as F
 
-from pathlib import Path
 from dotenv import load_dotenv
 from collections import defaultdict
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
-from edge_benchmarking_types.edge_farm.enums import OakImageResolution
-from edge_benchmarking_types.edge_farm.models import (
-    TritonDenseNetClient,
-    ExternalDataProvider,
-    OakClient,
-)
+from edge_benchmarking_types.sensors.models import Sensor, OakClient
+from edge_benchmarking_types.sensors.enums import OakImageResolution
+from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
 
 if __name__ == "__main__":
     load_dotenv()
@@ -67,13 +63,11 @@ if __name__ == "__main__":
         oak_client = OakClient(
             ip=OAK_CAMERA_IP, rgb_resolution=OakImageResolution.THE_1080P, warmup=3
         )
-        external_data_provider = ExternalDataProvider(
+        sensor = Sensor(
             client=oak_client,
             max_sample_size=OAK_MAX_SAMPLE_SIZE,
         )
-        dataset = client.capture_dataset(
-            root_dir=CAPTURE_ROOT_DIR, external_data_provider=external_data_provider
-        )
+        dataset = client.capture_dataset(root_dir=CAPTURE_ROOT_DIR, sensor=sensor)
 
     model = client.find_model(root_dir=EXAMPLE_ROOT_DIR)
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
