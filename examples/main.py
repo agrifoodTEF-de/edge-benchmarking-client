@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 from collections import defaultdict
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
-from edge_benchmarking_types.sensors.models import Sensor, OakClient
 from edge_benchmarking_types.sensors.enums import OakImageResolution
 from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
+from edge_benchmarking_types.sensors.models import SensorConfig, OakClientConfig
 
 if __name__ == "__main__":
     load_dotenv()
@@ -56,18 +56,22 @@ if __name__ == "__main__":
             file_extensions={".JPEG"},
         )
     else:
-        OAK_CAMERA_IP = "192.168.1.100"
+        OAK_CAMERA_HOSTNAME = "cam-01"
         OAK_MAX_SAMPLE_SIZE = 10
         CAPTURE_ROOT_DIR = "capture"
 
-        oak_client = OakClient(
-            ip=OAK_CAMERA_IP, rgb_resolution=OakImageResolution.THE_1080P, warmup=3
+        oak_client_config = OakClientConfig(
+            rgb_resolution=OakImageResolution.THE_1080P, warmup=3
         )
-        sensor = Sensor(
-            client=oak_client,
+        sensor_config = SensorConfig(
+            client_config=oak_client_config,
             max_sample_size=OAK_MAX_SAMPLE_SIZE,
         )
-        dataset = client.capture_dataset(root_dir=CAPTURE_ROOT_DIR, sensor=sensor)
+        dataset = client.capture_dataset(
+            root_dir=CAPTURE_ROOT_DIR,
+            hostname=OAK_CAMERA_HOSTNAME,
+            sensor_config=sensor_config,
+        )
 
     model = client.find_model(root_dir=EXAMPLE_ROOT_DIR)
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)

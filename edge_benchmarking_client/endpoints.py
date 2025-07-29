@@ -5,4 +5,3 @@ BENCHMARK_JOB = "/benchmark/job"
 
 DEVICE = "/device"
 SENSOR = "/sensor"
-SENSOR_CAPTURE = "/sensor/capture"

@@ -10,9 +10,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from requests import codes, HTTPError
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
-from edge_benchmarking_types.sensors.models import Sensor, OakClient
 from edge_benchmarking_types.sensors.enums import OakImageResolution
 from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
+from edge_benchmarking_types.sensors.models import SensorConfig, OakClientConfig
 
 
 EDGE_DEVICE_HOST = "edge-03"
@@ -25,7 +25,6 @@ CAPTURE_ROOT_DIR = EXAMPLES_ROOT_DIR.joinpath("capture")
 
 SENSOR_HOSTNAME_NOT_EXISTING = "does-not-exist"
 OAK_CAMERA_HOSTNAME = "cam-01"
-OAK_CAMERA_IP = "192.168.1.100"
 OAK_MAX_SAMPLE_SIZE = 10
 
 
@@ -76,6 +75,18 @@ class TestEdgeBenchmarkingClient:
             self.client.get_sensor(hostname=SENSOR_HOSTNAME_NOT_EXISTING)
         except HTTPError as e:
             assert e.response.status_code == codes.not_found
+
+    def test_create_sensor(self) -> None:
+        return
+
+    def test_create_sensor_conflict(self) -> None:
+        return
+
+    def test_remove_sensor_accepted(self) -> None:
+        return
+
+    def test_remove_sensor_no_content(self) -> None:
+        return
 
     def test_get_device_info(self) -> None:
         device_info = self.client.get_device_info(hostname=EDGE_DEVICE_HOST)
@@ -132,11 +143,17 @@ class TestEdgeBenchmarkingClient:
         self._benchmark_bytes_dataset(dataset)
 
     def test_benchmark_sensor_capture_oak(self) -> None:
-        oak_client = OakClient(
-            ip=OAK_CAMERA_IP, rgb_resolution=OakImageResolution.THE_1080P, warmup=3
+        oak_client_config = OakClientConfig(
+            rgb_resolution=OakImageResolution.THE_1080P, warmup=3
         )
-        sensor = Sensor(client=oak_client, max_sample_size=OAK_MAX_SAMPLE_SIZE)
-        dataset = self.client.capture_dataset(root_dir=CAPTURE_ROOT_DIR, sensor=sensor)
+        sensor_config = SensorConfig(
+            client_config=oak_client_config, max_sample_size=OAK_MAX_SAMPLE_SIZE
+        )
+        dataset = self.client.capture_dataset(
+            root_dir=CAPTURE_ROOT_DIR,
+            hostname=OAK_CAMERA_HOSTNAME,
+            sensor_config=sensor_config,
+        )
         self._benchmark_files_dataset(dataset)
         self._benchmark_bytes_dataset(dataset)
 

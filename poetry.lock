@@ -301,7 +301,7 @@ pydantic = "2.10.6"
 type = "git"
 url = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git"
 reference = "HEAD"
-resolved_reference = "4634c16dffcb35377c3f257fe1ed4071355a5182"
+resolved_reference = "6c67339548b2fd014bc2f928fea0b78a6223073d"
 
 [[package]]
 name = "exceptiongroup"

@@ -22,9 +22,8 @@ from requests.auth import HTTPBasicAuth
 
 from edge_benchmarking_client.endpoints import (
     DEVICE,
-    BENCHMARK_JOB,
     SENSOR,
-    SENSOR_CAPTURE,
+    BENCHMARK_JOB,
     BENCHMARK_DATA,
     BENCHMARK_DATA_MODEL,
     BENCHMARK_DATA_DATASET,
@@ -41,7 +40,7 @@ from edge_benchmarking_types.edge_device.models import (
     DeviceHeader,
     BenchmarkJob,
 )
-from edge_benchmarking_types.sensors.models import Sensor, SensorInfo
+from edge_benchmarking_types.sensors.models import SensorConfig, SensorInfo
 
 SUPPORTED_MODEL_FORMATS = {".onnx", ".pt", ".pth"}
 
@@ -294,13 +293,14 @@ class EdgeBenchmarkingClient:
     def capture_dataset(
         self,
         root_dir: str | Path,
-        sensor: Sensor,
+        hostname: str,
+        sensor_config: SensorConfig,
         chunk_size: int = 8192,
     ) -> list[Path]:
         root_dir = Path(root_dir).expanduser().resolve()
         with requests.post(
-            url=self._endpoint(SENSOR_CAPTURE),
-            json=sensor.model_dump(),
+            url=self._endpoint(SENSOR, hostname, "capture"),
+            json=sensor_config.model_dump(),
             auth=self.auth,
             stream=True,
         ) as response:
@@ -412,6 +412,12 @@ class EdgeBenchmarkingClient:
         sensor = SensorInfo.model_validate(response.json())
         logging.info(f"{response.status_code} - {sensor}")
         return sensor
+
+    def create_sensor(self) -> SensorInfo:
+        raise NotImplementedError()
+
+    def remove_sensor(self, hostname: str) -> None:
+        raise NotImplementedError()
 
     def get_benchmark_job_results(
         self, job_id: str, max_retries: int = math.inf, patience: int = 1
