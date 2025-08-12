@@ -413,11 +413,42 @@ class EdgeBenchmarkingClient:
         logging.info(f"{response.status_code} - {sensor}")
         return sensor
 
-    def create_sensor(self) -> SensorInfo:
-        raise NotImplementedError()
+    def create_sensor(self, sensor_info: SensorInfo) -> SensorInfo:
+        response = requests.post(
+            url=self._endpoint(SENSOR), json=sensor_info.model_dump(), auth=self.auth
+        )
+        response.raise_for_status()
+        sensor = SensorInfo.model_validate(response.json())
+        logging.info(f"{response.status_code} - {sensor}")
+        return sensor
 
-    def remove_sensor(self, hostname: str) -> None:
-        raise NotImplementedError()
+    def remove_sensor(self, hostname: str) -> Response:
+        response = requests.delete(url=self._endpoint(SENSOR, hostname), auth=self.auth)
+        response.raise_for_status()
+        logging.info(f"{response.status_code}")
+        return response
+
+    def replace_sensor(self, hostname: str, sensor_info: SensorInfo) -> SensorInfo:
+        response = requests.put(
+            url=self._endpoint(SENSOR, hostname),
+            json=sensor_info.model_dump(),
+            auth=self.auth,
+        )
+        response.raise_for_status()
+        sensor = SensorInfo.model_validate(response.json())
+        logging.info(f"{response.status_code} - {sensor}")
+        return sensor
+
+    def update_sensor(self, hostname: str, sensor_info: dict) -> SensorInfo:
+        response = requests.patch(
+            url=self._endpoint(SENSOR, hostname),
+            json=sensor_info,
+            auth=self.auth,
+        )
+        response.raise_for_status()
+        sensor = SensorInfo.model_validate(response.json())
+        logging.info(f"{response.status_code} - {sensor}")
+        return sensor
 
     def get_benchmark_job_results(
         self, job_id: str, max_retries: int = math.inf, patience: int = 1

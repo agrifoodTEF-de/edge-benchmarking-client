@@ -9,11 +9,15 @@ from io import BytesIO
 from pathlib import Path
 from dotenv import load_dotenv
 from requests import codes, HTTPError
+from edge_benchmarking_types.sensors.enums import SensorType
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
 from edge_benchmarking_types.sensors.enums import OakImageResolution
 from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
-from edge_benchmarking_types.sensors.models import SensorConfig, OakClientConfig
-
+from edge_benchmarking_types.sensors.models import (
+    SensorConfig,
+    OakClientConfig,
+    SensorInfo,
+)
 
 EDGE_DEVICE_HOST = "edge-03"
 # EDGE_DEVICE_HOST = "edge-09"
@@ -26,6 +30,26 @@ CAPTURE_ROOT_DIR = EXAMPLES_ROOT_DIR.joinpath("capture")
 SENSOR_HOSTNAME_NOT_EXISTING = "does-not-exist"
 OAK_CAMERA_HOSTNAME = "cam-01"
 OAK_MAX_SAMPLE_SIZE = 10
+
+TEST_SENSOR_HOSTNAME = "test-hostname"
+TEST_SENSOR_INFO = SensorInfo(
+    type=SensorType.CAMERA,
+    name="test-sensor",
+    manufacturer="test-manufacturer",
+    model="test-model",
+    serial="test-serial",
+    hostname=TEST_SENSOR_HOSTNAME,
+    ip="192.168.42.42",
+)
+TEST_SENSOR_INFO_REPLACE = SensorInfo(
+    type=SensorType.CAMERA,
+    name="test-sensor-replace",
+    manufacturer="test-manufacturer-replace",
+    model="test-model-replace",
+    serial="test-serial-replace",
+    hostname=TEST_SENSOR_HOSTNAME,
+    ip="192.168.42.43",
+)
 
 
 class TestEdgeBenchmarkingClient:
@@ -77,16 +101,90 @@ class TestEdgeBenchmarkingClient:
             assert e.response.status_code == codes.not_found
 
     def test_create_sensor(self) -> None:
-        return
+        try:
+            sensor = self.client.create_sensor(sensor_info=TEST_SENSOR_INFO)
+            assert sensor.hostname == TEST_SENSOR_HOSTNAME
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
 
     def test_create_sensor_conflict(self) -> None:
-        return
+        try:
+            self.client.create_sensor(sensor_info=TEST_SENSOR_INFO)
+            self.client.create_sensor(sensor_info=TEST_SENSOR_INFO)
+        except HTTPError as e:
+            assert e.response.status_code == codes.conflict
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
 
     def test_remove_sensor_accepted(self) -> None:
-        return
+        try:
+            self.client.create_sensor(sensor_info=TEST_SENSOR_INFO)
+            response = self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
+            assert response.status_code == codes.accepted
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
 
     def test_remove_sensor_no_content(self) -> None:
-        return
+        try:
+            response = self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
+            assert response.status_code == codes.no_content
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
+
+    def test_replace_sensor(self) -> None:
+        try:
+            sensor = self.client.create_sensor(sensor_info=TEST_SENSOR_INFO)
+            assert sensor.hostname == TEST_SENSOR_HOSTNAME
+            replaced_sensor = self.client.replace_sensor(
+                hostname=TEST_SENSOR_HOSTNAME, sensor_info=TEST_SENSOR_INFO_REPLACE
+            )
+            assert replaced_sensor.hostname == TEST_SENSOR_HOSTNAME
+            assert replaced_sensor.name == "test-sensor-replace"
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
+
+    def test_replace_sensor_not_found(self) -> None:
+        try:
+            self.client.replace_sensor(
+                hostname=TEST_SENSOR_HOSTNAME, sensor_info=TEST_SENSOR_INFO_REPLACE
+            )
+        except HTTPError as e:
+            assert e.response.status_code == codes.not_found
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
+
+    def test_update_sensor(self) -> None:
+        try:
+            sensor = self.client.create_sensor(sensor_info=TEST_SENSOR_INFO)
+            assert sensor.hostname == TEST_SENSOR_HOSTNAME
+            update_sensor_name = "test-sensor-update"
+            updated_sensor = self.client.update_sensor(
+                hostname=TEST_SENSOR_HOSTNAME, sensor_info={"name": update_sensor_name}
+            )
+            assert updated_sensor.name == update_sensor_name
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
+
+    def test_update_sensor_not_found(self) -> None:
+        try:
+            update_sensor_name = "test-sensor-update"
+            self.client.update_sensor(
+                hostname=TEST_SENSOR_HOSTNAME, sensor_info={"name": update_sensor_name}
+            )
+        except HTTPError as e:
+            assert e.response.status_code == codes.not_found
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
+
+    def test_update_sensor_empty_bad_request(self) -> None:
+        try:
+            sensor = self.client.create_sensor(sensor_info=TEST_SENSOR_INFO)
+            assert sensor.hostname == TEST_SENSOR_HOSTNAME
+            self.client.update_sensor(hostname=TEST_SENSOR_HOSTNAME, sensor_info={})
+        except HTTPError as e:
+            assert e.response.status_code == codes.bad_request
+        finally:
+            self.client.remove_sensor(hostname=TEST_SENSOR_HOSTNAME)
 
     def test_get_device_info(self) -> None:
         device_info = self.client.get_device_info(hostname=EDGE_DEVICE_HOST)
