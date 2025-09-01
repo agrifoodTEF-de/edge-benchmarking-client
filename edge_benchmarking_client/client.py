@@ -381,6 +381,16 @@ class EdgeBenchmarkingClient:
         logging.info(f"{response.status_code}")
         return response
 
+    def get_device_headers(self) -> list[DeviceHeader]:
+        response = requests.get(url=self._endpoint(DEVICE, "header"), auth=self.auth)
+        response.raise_for_status()
+        device_headers = [
+            DeviceHeader.model_validate(device_header)
+            for device_header in response.json()
+        ]
+        logging.info(f"{response.status_code} - {device_headers}")
+        return device_headers
+
     def get_device_header(self, hostname: str) -> DeviceHeader:
         response = requests.get(
             url=self._endpoint(DEVICE, hostname, "header"), auth=self.auth

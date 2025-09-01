@@ -80,6 +80,14 @@ class TestEdgeBenchmarkingClient:
         assert len(welcome_message) == 1
         assert "message" in welcome_message
 
+    def test_get_device_headers(self) -> None:
+        device_headers = self.client.get_device_headers()
+        assert any(
+            device_header.hostname == EDGE_DEVICE_HOST
+            for device_header in device_headers
+        )
+        assert any(device_header.online for device_header in device_headers)
+
     def test_get_device_header(self) -> None:
         device_header = self.client.get_device_header(hostname=EDGE_DEVICE_HOST)
         assert device_header.hostname == EDGE_DEVICE_HOST
