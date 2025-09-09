@@ -300,7 +300,7 @@ class EdgeBenchmarkingClient:
         root_dir = Path(root_dir).expanduser().resolve()
         with requests.post(
             url=self._endpoint(SENSOR, hostname, "capture"),
-            json=sensor_config.model_dump(),
+            json=sensor_config.model_dump(mode="json"),
             auth=self.auth,
             stream=True,
         ) as response:
@@ -345,8 +345,8 @@ class EdgeBenchmarkingClient:
         response = requests.post(
             url=self._endpoint(BENCHMARK_JOB, job_id, "start"),
             json={
-                "edge_device": edge_device.model_dump(),
-                "inference_client": inference_client.model_dump(),
+                "edge_device": edge_device.model_dump(mode="json"),
+                "inference_client": inference_client.model_dump(mode="json"),
                 "cpu_only": cpu_only,
             },
             auth=self.auth,
@@ -425,7 +425,9 @@ class EdgeBenchmarkingClient:
 
     def create_sensor(self, sensor_info: SensorInfo) -> SensorInfo:
         response = requests.post(
-            url=self._endpoint(SENSOR), json=sensor_info.model_dump(), auth=self.auth
+            url=self._endpoint(SENSOR),
+            json=sensor_info.model_dump(mode="json"),
+            auth=self.auth,
         )
         response.raise_for_status()
         sensor = SensorInfo.model_validate(response.json())
@@ -441,7 +443,7 @@ class EdgeBenchmarkingClient:
     def replace_sensor(self, hostname: str, sensor_info: SensorInfo) -> SensorInfo:
         response = requests.put(
             url=self._endpoint(SENSOR, hostname),
-            json=sensor_info.model_dump(),
+            json=sensor_info.model_dump(mode="json"),
             auth=self.auth,
         )
         response.raise_for_status()
