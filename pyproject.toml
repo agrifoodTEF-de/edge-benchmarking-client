@@ -8,8 +8,8 @@ readme = "README.md"
 packages = [{ include = "edge_benchmarking_client" }]
 
 [tool.poetry.dependencies]
-python = "^3.10"
-requests = "2.32.3"
+python = ">=3.11,<3.13"
+requests = "2.32.4"
 validators = "0.34.0"
 python-dotenv = "1.0.1"
 edge-benchmarking-types = { git = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git" }
@@ -19,8 +19,9 @@ black = "25.1.0"
 numpy = "1.26.4"
 matplotlib = "3.10.0"
 pandas = "2.2.3"
-torch = "2.6.0"
+torch = "2.8.0"
 pytest = "8.3.4"
+ipykernel = "^7.1.0"
 
 [tool.pytest.ini_options]
 log_cli = true
