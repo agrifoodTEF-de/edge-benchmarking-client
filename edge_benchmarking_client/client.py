@@ -239,21 +239,13 @@ class EdgeBenchmarkingClient:
                     bucket_name=bucket_name,
                 )
                 filepaths += response.json()
-            return filepaths
 
-        def _upload_benchmark_dataset_bytes() -> list[str]:
-            return self._upload_benchmark_files(
-                endpoint=BENCHMARK_DATA_DATASET,
-                fields={"dataset": dataset},
-                bucket_name=bucket_name,
-            ).json()
+            return filepaths
 
         if isinstance(dataset, list):
             assert len(dataset), "List of dataset files is empty."
-            if isinstance(dataset[0], Path):
+            if isinstance(dataset[0], Path) or self._file_is_bytes(dataset[0]):
                 filepaths = _upload_benchmark_dataset_files()
-            elif self._file_is_bytes(dataset[0]):
-                filepaths = _upload_benchmark_dataset_bytes()
             else:
                 raise TypeError("Unsupported list of dataset samples.")
         else:
