@@ -1,4 +1,5 @@
 import logging
+import types
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,6 +15,7 @@ import urllib
 import requests
 import validators
 
+from typing import Generator
 from io import BytesIO
 from pathlib import Path
 from requests import Response
@@ -216,7 +218,11 @@ class EdgeBenchmarkingClient:
     def _upload_benchmark_dataset(
         self,
         bucket_name: str,
-        dataset: list[Path] | list[tuple[str, BytesIO]],
+        dataset: (
+            list[Path]
+            | list[tuple[str, BytesIO]]
+            | Generator[tuple[str, BytesIO], None, None]
+        ),
         chunk_size: int | None = None,
     ) -> list[str]:
         def _upload_benchmark_dataset_files() -> list[str]:
@@ -242,12 +248,31 @@ class EdgeBenchmarkingClient:
 
             return filepaths
 
+        def _upload_benchmark_dataset_generator() -> list[str]:
+            filepaths: list[str] = []
+            logging.info(
+                "Uploading generator dataset in chunks of size %i.", chunk_size
+            )
+            counter = 0
+            for dataset_chunk in dataset:
+                response = self._upload_benchmark_files(
+                    endpoint=BENCHMARK_DATA_DATASET,
+                    fields={"dataset": dataset_chunk},
+                    bucket_name=bucket_name,
+                )
+                filepaths += response.json()
+                counter += 1
+            logging.info("Uploaded %i generated chunks.", counter)
+            return filepaths
+
         if isinstance(dataset, list):
             assert len(dataset), "List of dataset files is empty."
             if isinstance(dataset[0], Path) or self._file_is_bytes(dataset[0]):
                 filepaths = _upload_benchmark_dataset_files()
             else:
                 raise TypeError("Unsupported list of dataset samples.")
+        elif isinstance(dataset, types.GeneratorType):
+            filepaths = _upload_benchmark_dataset_generator()
         else:
             raise TypeError("Unsupported dataset type.")
 
@@ -478,7 +503,11 @@ class EdgeBenchmarkingClient:
 
     def upload_benchmark_data(
         self,
-        dataset: list[Path] | list[tuple[str, BytesIO]],
+        dataset: (
+            list[Path]
+            | list[tuple[str, BytesIO]]
+            | Generator[tuple[str, BytesIO], None, None]
+        ),
         model: Path | tuple[str, BytesIO],
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
@@ -510,7 +539,11 @@ class EdgeBenchmarkingClient:
     def benchmark(
         self,
         edge_device: str,
-        dataset: list[Path] | list[tuple[str, BytesIO]],
+        dataset: (
+            list[Path]
+            | list[tuple[str, BytesIO]]
+            | Generator[list[str, BytesIO], None, None]
+        ),
         model: Path | tuple[str, BytesIO],
         inference_client: InferenceClient,
         model_metadata: Path | tuple[str, BytesIO] | None = None,

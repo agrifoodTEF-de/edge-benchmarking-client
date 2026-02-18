@@ -3,6 +3,7 @@
 
 
 import os
+from typing import Generator
 import pytest
 
 from io import BytesIO
@@ -239,6 +240,7 @@ class TestEdgeBenchmarkingClient:
         )
         self._benchmark_files_dataset(dataset)
         self._benchmark_bytes_dataset(dataset)
+        self._benchmark_bytes_dataset_in_generator(dataset)
 
     def test_benchmark_dataset_archives(self) -> None:
         dataset = self.client.find_dataset(
@@ -310,6 +312,42 @@ class TestEdgeBenchmarkingClient:
             model_metadata=files["model_metadata"],
             labels=files["labels"],
             cpu_only=False,
+        )
+
+    def _benchmark_bytes_dataset_in_generator(self, dataset: list[Path]) -> None:
+        files = {
+            "model": self.client.find_model(
+                root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+            ),
+            "model_metadata": self.client.find_model_metadata(
+                root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+            ),
+            "labels": self.client.find_labels(
+                root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+            ),
+        }
+
+        for name, filepath in files.items():
+            with open(filepath, "rb") as fh:
+                files[name] = (filepath.name, BytesIO(fh.read()))
+
+        chunk_size = 10
+
+        def byte_dataset_generator() -> Generator[list[str, BytesIO], None, None]:
+            for i in range(0, len(dataset), chunk_size):
+                dataset_chunk = []
+                for file_path in dataset[i : i + chunk_size]:
+                    with open(file_path, "rb") as fh:
+                        dataset_chunk.append((file_path.name, BytesIO(fh.read())))
+                yield dataset_chunk
+
+        self._test_benchmark(
+            dataset=byte_dataset_generator(),
+            model=files["model"],
+            model_metadata=files["model_metadata"],
+            labels=files["labels"],
+            cpu_only=False,
+            chunk_size=chunk_size,
         )
 
     def _test_benchmark(
