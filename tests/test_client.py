@@ -352,7 +352,7 @@ class TestEdgeBenchmarkingClient:
 
     def _test_benchmark(
         self,
-        dataset: Path | tuple[str, BytesIO],
+        dataset: Path | tuple[str, BytesIO] | Generator[list[str, BytesIO], None, None],
         model: Path | tuple[str, BytesIO],
         model_metadata: Path | tuple[str, BytesIO],
         labels: Path | tuple[str, BytesIO],
