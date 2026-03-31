@@ -205,9 +205,9 @@ class TestEdgeBenchmarkingClient:
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
             file_extensions=file_extensions,
         )
-        assert len(dataset) == 50
+        assert len(dataset) == 100
         assert {sample.suffix for sample in dataset} <= file_extensions
-        assert all("dataset" == sample.parent.name for sample in dataset)
+        assert all("imagenet_val_2_classes" == sample.parent.name for sample in dataset)
 
     def test_find_model(self) -> None:
         model = self.client.find_model(
@@ -238,9 +238,12 @@ class TestEdgeBenchmarkingClient:
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
             file_extensions={".JPEG"},
         )
-        self._benchmark_files_dataset(dataset)
-        self._benchmark_bytes_dataset(dataset)
-        self._benchmark_bytes_dataset_in_generator(dataset)
+        annotations = self.client.find_annotations(
+            root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+        )
+        self._benchmark_files_dataset(dataset, annotations)
+        self._benchmark_bytes_dataset(dataset, annotations)
+        self._benchmark_bytes_dataset_in_generator(dataset, annotations)
 
     def test_benchmark_dataset_archives(self) -> None:
         dataset = self.client.find_dataset(
@@ -265,7 +268,7 @@ class TestEdgeBenchmarkingClient:
         self._benchmark_files_dataset(dataset)
         self._benchmark_bytes_dataset(dataset)
 
-    def _benchmark_files_dataset(self, dataset: list[Path]) -> None:
+    def _benchmark_files_dataset(self, dataset: list[Path], annotations=None) -> None:
         model = self.client.find_model(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
         )
@@ -282,9 +285,10 @@ class TestEdgeBenchmarkingClient:
             model_metadata=model_metadata,
             labels=labels,
             chunk_size=10,
+            annotation=annotations,
         )
 
-    def _benchmark_bytes_dataset(self, dataset: list[Path]) -> None:
+    def _benchmark_bytes_dataset(self, dataset: list[Path], annotations=None) -> None:
         files = {
             "model": self.client.find_model(
                 root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
@@ -312,9 +316,12 @@ class TestEdgeBenchmarkingClient:
             model_metadata=files["model_metadata"],
             labels=files["labels"],
             cpu_only=False,
+            annotation=annotations,
         )
 
-    def _benchmark_bytes_dataset_in_generator(self, dataset: list[Path]) -> None:
+    def _benchmark_bytes_dataset_in_generator(
+        self, dataset: list[Path], annotations=None
+    ) -> None:
         files = {
             "model": self.client.find_model(
                 root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
@@ -348,6 +355,7 @@ class TestEdgeBenchmarkingClient:
             labels=files["labels"],
             cpu_only=False,
             chunk_size=chunk_size,
+            annotation=annotations,
         )
 
     def _test_benchmark(
@@ -367,6 +375,7 @@ class TestEdgeBenchmarkingClient:
         warm_up: bool = False,
         num_classes: int = 10,
         scaling: str | None = "inception",
+        annotation: Path | tuple[str, BytesIO] | None = "",
     ) -> None:
         inference_client = TritonDenseNetClient(
             protocol=protocol,
@@ -392,8 +401,13 @@ class TestEdgeBenchmarkingClient:
             cleanup=cleanup,
             chunk_size=chunk_size,
             cpu_only=cpu_only,
+            annotation=annotation,
         )
 
+        if "accuracy" in benchmark_job.inference_results.results:
+            assert (
+                float(benchmark_job.inference_results.results.pop("accuracy")) == 0.53
+            )
         assert all(
             len(predictions) == num_classes
             for predictions in benchmark_job.inference_results.results.values()

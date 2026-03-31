@@ -29,6 +29,7 @@ from edge_benchmarking_client.endpoints import (
     BENCHMARK_DATA,
     BENCHMARK_DATA_MODEL,
     BENCHMARK_DATA_DATASET,
+    BENCHMARK_DATA_ANNOTATION,
 )
 from edge_benchmarking_types.edge_farm.models import (
     EdgeDevice,
@@ -224,6 +225,7 @@ class EdgeBenchmarkingClient:
             | Generator[tuple[str, BytesIO], None, None]
         ),
         chunk_size: int | None = None,
+        annotation: Path | tuple[str, BytesIO] | None = None,
     ) -> list[str]:
         def _upload_benchmark_dataset_files() -> list[str]:
             if chunk_size is not None and chunk_size > 1 and len(dataset) > chunk_size:
@@ -276,6 +278,14 @@ class EdgeBenchmarkingClient:
         else:
             raise TypeError("Unsupported dataset type.")
 
+        # TODO add type checking
+        if annotation is not None:
+            response = self._upload_benchmark_files(
+                endpoint=BENCHMARK_DATA_ANNOTATION,
+                fields={"annotation": annotation},
+                bucket_name=bucket_name,
+            )
+
         return filepaths
 
     def find_dataset(
@@ -305,6 +315,13 @@ class EdgeBenchmarkingClient:
     def find_labels(self, root_dir: str, labels_name: str | None = None) -> Path:
         return self._find_file(
             root_dir=root_dir, extensions={".txt"}, filename=labels_name
+        )
+
+    def find_annotations(
+        self, root_dir: str, annotations_name: str | None = None
+    ) -> Path:
+        return self._find_file(
+            root_dir=root_dir, extensions={".xml"}, filename=annotations_name
         )
 
     def capture_dataset(
@@ -512,6 +529,7 @@ class EdgeBenchmarkingClient:
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
         chunk_size: int | None = None,
+        annotation: Path | tuple[str, BytesIO] | None = None,
     ) -> BenchmarkData:
         # 1. Create benchmark bucket
         bucket_name: str = self._create_benchmark_bucket()
@@ -529,6 +547,7 @@ class EdgeBenchmarkingClient:
             bucket_name=bucket_name,
             dataset=dataset,
             chunk_size=chunk_size,
+            annotation=annotation,
         )
 
         benchmark_data = BenchmarkData(
@@ -551,6 +570,7 @@ class EdgeBenchmarkingClient:
         chunk_size: int | None = None,
         cpu_only: bool = False,
         cleanup: bool = True,
+        annotation: Path | tuple[str, BytesIO] | None = None,
     ) -> BenchmarkJob:
         benchmark_job_id = None
         try:
@@ -561,6 +581,7 @@ class EdgeBenchmarkingClient:
                 model_metadata=model_metadata,
                 labels=labels,
                 chunk_size=chunk_size,
+                annotation=annotation,
             )
 
             # 2. Get the bucket name of benchmark data

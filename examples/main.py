@@ -76,6 +76,7 @@ if __name__ == "__main__":
     model = client.find_model(root_dir=EXAMPLE_ROOT_DIR)
     model_metadata = client.find_model_metadata(root_dir=EXAMPLE_ROOT_DIR)
     labels = client.find_labels(root_dir=EXAMPLE_ROOT_DIR)
+    annotations = client.find_annotations(root_dir=EXAMPLE_ROOT_DIR)
 
     # Create inference client configuration (in this case for Triton with DenseNet model)
     inference_client = TritonDenseNetClient(
@@ -88,7 +89,7 @@ if __name__ == "__main__":
         model_name=EXAMPLE_ROOT_DIR,
         model_version="1",
         batch_size=1,
-        num_classes=1000,
+        num_classes=2,
         scaling="inception",
     )
 
@@ -103,6 +104,7 @@ if __name__ == "__main__":
         chunk_size=10,
         cpu_only=False,
         cleanup=True,
+        annotation=annotations,
     )
 
     # If benchmark job has failed, read error message
@@ -119,21 +121,22 @@ if __name__ == "__main__":
             inference_respone_id,
             inference_result,
         ) in benchmark_job.inference_results.results.items():
-            predictions = np.stack(inference_result)
+            if inference_respone_id != "accuracy":
+                predictions = np.stack(inference_result)
 
-            logits = predictions[:, 0].astype(float)
-            probabilities = F.softmax(torch.tensor(logits), dim=0)
+                logits = predictions[:, 0].astype(float)
+                probabilities = F.softmax(torch.tensor(logits), dim=0)
 
-            predicted_classes = predictions[:, -1]
-            predicted_class_index = probabilities.argmax()
-            predicted_probability = probabilities.max()
-            predicted_class = predicted_classes[predicted_class_index]
+                predicted_classes = predictions[:, -1]
+                predicted_class_index = probabilities.argmax()
+                predicted_probability = probabilities.max()
+                predicted_class = predicted_classes[predicted_class_index]
 
-            final_inference_results["response id"].append(inference_respone_id)
-            final_inference_results["class"].append(predicted_class)
-            final_inference_results["probability"].append(
-                predicted_probability.item() * 100
-            )
+                final_inference_results["response id"].append(inference_respone_id)
+                final_inference_results["class"].append(predicted_class)
+                final_inference_results["probability"].append(
+                    predicted_probability.item() * 100
+                )
 
-            inference_results_df = pd.DataFrame(final_inference_results)
+                inference_results_df = pd.DataFrame(final_inference_results)
         print(inference_results_df)
