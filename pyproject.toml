@@ -9,7 +9,7 @@ packages = [{ include = "edge_benchmarking_client" }]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
-requests = "2.32.3"
+requests = "2.33.0"
 validators = "0.34.0"
 python-dotenv = "1.2.2"
 edge-benchmarking-types = { git = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git" }

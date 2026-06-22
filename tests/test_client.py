@@ -404,10 +404,12 @@ class TestEdgeBenchmarkingClient:
             annotation=annotation,
         )
 
-        if "accuracy" in benchmark_job.inference_results.results:
-            assert (
-                float(benchmark_job.inference_results.results.pop("accuracy")) == 0.53
-            )
+        if benchmark_job.inference_results.metrics is not None:
+            if "accuracy" in benchmark_job.inference_results.metrics:
+                assert (
+                    float(benchmark_job.inference_results.metrics.pop("accuracy"))
+                    == 0.53
+                )
         assert all(
             len(predictions) == num_classes
             for predictions in benchmark_job.inference_results.results.values()
