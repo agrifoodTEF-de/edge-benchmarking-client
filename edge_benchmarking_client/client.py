@@ -279,9 +279,7 @@ class EdgeBenchmarkingClient:
             raise TypeError("Unsupported dataset type.")
 
         if annotation is not None:
-            if isinstance(annotation, Path) or isinstance(
-                annotation, tuple[str, BytesIO]
-            ):
+            if isinstance(annotation, (Path, tuple)):
                 response = self._upload_benchmark_files(
                     endpoint=BENCHMARK_DATA_ANNOTATION,
                     fields={"annotation": annotation},
