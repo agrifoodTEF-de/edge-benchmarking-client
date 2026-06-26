@@ -310,6 +310,12 @@ class TestEdgeBenchmarkingClient:
             with open(sample, "rb") as fh:
                 files["dataset"].append((sample.name, BytesIO(fh.read())))
 
+        # Exercise the (name, BytesIO) tuple annotation upload path (the one the
+        # Agri-Gaia backend uses), not just the Path path.
+        if annotations is not None:
+            with open(annotations, "rb") as fh:
+                annotations = (annotations.name, BytesIO(fh.read()))
+
         self._test_benchmark(
             dataset=files["dataset"],
             model=files["model"],
@@ -347,6 +353,12 @@ class TestEdgeBenchmarkingClient:
                     with open(file_path, "rb") as fh:
                         dataset_chunk.append((file_path.name, BytesIO(fh.read())))
                 yield dataset_chunk
+
+        # Exercise the (name, BytesIO) tuple annotation upload path (the one the
+        # Agri-Gaia backend uses), not just the Path path.
+        if annotations is not None:
+            with open(annotations, "rb") as fh:
+                annotations = (annotations.name, BytesIO(fh.read()))
 
         self._test_benchmark(
             dataset=byte_dataset_generator(),
