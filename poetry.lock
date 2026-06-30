@@ -529,7 +529,7 @@ files = [
 
 [[package]]
 name = "edge-benchmarking-types"
-version = "0.1.0"
+version = "0.2.0"
 description = "Type definitions for AgrifoodTEF's Edge Benchmarking Service."
 optional = false
 python-versions = "^3.8"
@@ -543,7 +543,7 @@ pydantic = "2.10.6"
 type = "git"
 url = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git"
 reference = "HEAD"
-resolved_reference = "7ac4aab6bfa478897b02db960803959731badafd"
+resolved_reference = "0f2690b09fbbfdbdf1a8940d31f6b58394348900"
 
 [[package]]
 name = "executing"

@@ -6,3 +6,5 @@ BENCHMARK_JOB = "/benchmark/job"
 
 DEVICE = "/device"
 SENSOR = "/sensor"
+CATALOG = "/catalog"
+CATALOG_DEVICE = f"{CATALOG}/device"

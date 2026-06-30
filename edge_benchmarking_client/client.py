@@ -15,7 +15,7 @@ import urllib
 import requests
 import validators
 
-from typing import Generator
+from typing import Any, Callable, Generator
 from io import BytesIO
 from pathlib import Path
 from requests import Response
@@ -25,17 +25,25 @@ from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
     DEVICE,
     SENSOR,
+    CATALOG_DEVICE,
     BENCHMARK_JOB,
     BENCHMARK_DATA,
     BENCHMARK_DATA_MODEL,
     BENCHMARK_DATA_DATASET,
     BENCHMARK_DATA_ANNOTATION,
 )
+from edge_benchmarking_client.ranking import CandidateInput, rank_candidates
+from edge_benchmarking_types.edge_farm.enums import (
+    OptimizationFactor,
+    LatencyPercentile,
+)
 from edge_benchmarking_types.edge_farm.models import (
     EdgeDevice,
     BenchmarkModel,
     BenchmarkData,
     InferenceClient,
+    DeviceCatalogEntry,
+    DeviceRecommendation,
 )
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_types.edge_device.models import (
@@ -443,6 +451,140 @@ class EdgeBenchmarkingClient:
         device_info = DeviceInfo.model_validate(response.json())
         logging.info(f"{response.status_code} - {device_info}")
         return device_info
+
+    def get_device_catalog(self) -> list[DeviceCatalogEntry]:
+        response = requests.get(url=self._endpoint(CATALOG_DEVICE), auth=self.auth)
+        response.raise_for_status()
+        catalog = [
+            DeviceCatalogEntry.model_validate(entry) for entry in response.json()
+        ]
+        logging.info(f"{response.status_code} - {catalog}")
+        return catalog
+
+    @staticmethod
+    def _resolve_catalog_entry(
+        gpu_model: str | None, catalog: list[DeviceCatalogEntry]
+    ) -> DeviceCatalogEntry | None:
+        """Match a device's GPU model to a catalog entry.
+
+        Mirrors the Edge-Farm resolver: exact match first, then a
+        case-insensitive substring match (the catalog lists specific models
+        before generic ones, e.g. "Orin Nano" before "Nano").
+        """
+        if not gpu_model:
+            return None
+        for entry in catalog:
+            if entry.gpu_model == gpu_model:
+                return entry
+        needle = gpu_model.lower()
+        for entry in catalog:
+            if entry.gpu_model.lower() in needle:
+                return entry
+        return None
+
+    def _device_gpu_model(self, hostname: str) -> str | None:
+        try:
+            device_info = self.get_device_info(hostname)
+        except Exception as e:
+            logging.warning(f"Could not fetch device info for '{hostname}': {e}")
+            return None
+        if device_info.gpu:
+            return device_info.gpu[0].model
+        return None
+
+    def resolve_catalog_entry(
+        self, hostname: str, catalog: list[DeviceCatalogEntry] | None = None
+    ) -> DeviceCatalogEntry | None:
+        """Resolve the catalog entry (cost/tier) for a device by its GPU model.
+
+        Fetches the catalog if not supplied. Useful to callers that drive the
+        per-device benchmark loop themselves (e.g. to persist each run) and only
+        need the cost/tier metadata for ranking.
+        """
+        if catalog is None:
+            catalog = self.get_device_catalog()
+        return self._resolve_catalog_entry(self._device_gpu_model(hostname), catalog)
+
+    def recommend_device(
+        self,
+        *,
+        model: Path | tuple[str, BytesIO],
+        dataset: (
+            list[Path]
+            | list[tuple[str, BytesIO]]
+            | Generator[list[str, BytesIO], None, None]
+        ),
+        inference_client: InferenceClient,
+        candidate_devices: list[str],
+        factor: OptimizationFactor,
+        latency_threshold_ms: float,
+        latency_metric: LatencyPercentile = LatencyPercentile.P95,
+        model_metadata: Path | tuple[str, BytesIO] | None = None,
+        labels: Path | tuple[str, BytesIO] | None = None,
+        annotation: Path | tuple[str, BytesIO] | None = None,
+        chunk_size: int | None = None,
+        cpu_only: bool = False,
+        dataset_factory: Callable[[], Any] | None = None,
+    ) -> DeviceRecommendation:
+        """Benchmark a model across candidate devices and recommend the best one.
+
+        Runs a benchmark on each device in ``candidate_devices`` (sequentially —
+        each device runs one job at a time), then returns the device that
+        minimizes ``factor`` (cost / energy / latency) among those whose chosen
+        latency statistic stays within ``latency_threshold_ms``.
+
+        The dataset is consumed by each benchmark, so for a one-shot generator
+        pass ``dataset_factory`` (a zero-arg callable returning a fresh dataset);
+        a re-usable ``list`` may be passed directly as ``dataset``.
+
+        Cost/tier come from the Edge-Farm device catalog (``GET /catalog/device``)
+        resolved per device via its reported GPU model.
+        """
+        catalog = self.get_device_catalog()
+
+        candidates: list[CandidateInput] = []
+        for hostname in candidate_devices:
+            catalog_entry = self.resolve_catalog_entry(hostname, catalog)
+            device_inference_client = inference_client.model_copy(
+                update={"host": hostname}
+            )
+            try:
+                ds = dataset_factory() if dataset_factory is not None else dataset
+                benchmark_job = self.benchmark(
+                    edge_device=hostname,
+                    dataset=ds,
+                    model=model,
+                    inference_client=device_inference_client,
+                    model_metadata=model_metadata,
+                    labels=labels,
+                    chunk_size=chunk_size,
+                    cpu_only=cpu_only,
+                    annotation=annotation,
+                )
+                candidates.append(
+                    CandidateInput(
+                        hostname=hostname,
+                        benchmark_job=benchmark_job,
+                        benchmark_job_id=benchmark_job.id,
+                        catalog_entry=catalog_entry,
+                    )
+                )
+            except Exception as e:
+                logging.exception(f"Benchmark on device '{hostname}' failed.")
+                candidates.append(
+                    CandidateInput(
+                        hostname=hostname,
+                        catalog_entry=catalog_entry,
+                        error=f"benchmark failed: {e}",
+                    )
+                )
+
+        return rank_candidates(
+            candidates,
+            factor=factor,
+            latency_metric=latency_metric,
+            latency_threshold_ms=latency_threshold_ms,
+        )
 
     def get_sensors(self) -> list[SensorInfo]:
         response = requests.get(url=self._endpoint(SENSOR), auth=self.auth)
