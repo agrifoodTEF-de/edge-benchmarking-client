@@ -492,18 +492,40 @@ class EdgeBenchmarkingClient:
             return device_info.gpu[0].model
         return None
 
+    def _device_name(self, hostname: str) -> str | None:
+        """Return a device's human-readable name (e.g. "NVIDIA Jetson AGX Orin
+        64GB Developer Kit") from its header, or ``None`` if unavailable."""
+        try:
+            for header in self.get_device_headers():
+                if header.hostname == hostname:
+                    return header.name
+        except Exception as e:
+            logging.warning(f"Could not fetch device headers for '{hostname}': {e}")
+        return None
+
     def resolve_catalog_entry(
         self, hostname: str, catalog: list[DeviceCatalogEntry] | None = None
     ) -> DeviceCatalogEntry | None:
-        """Resolve the catalog entry (cost/tier) for a device by its GPU model.
+        """Resolve the catalog entry (cost/tier) for a device.
 
         Fetches the catalog if not supplied. Useful to callers that drive the
         per-device benchmark loop themselves (e.g. to persist each run) and only
         need the cost/tier metadata for ranking.
+
+        The device's marketing name (``DeviceHeader.name``, e.g. "NVIDIA Jetson
+        AGX Orin 64GB Developer Kit") reliably contains the catalog's
+        ``gpu_model`` substrings, whereas the GPU chip model reported in
+        ``DeviceInfo.gpu[*].model`` often does not (it can be a chip codename or
+        empty). Match on the name first, then fall back to the reported GPU
+        model.
         """
         if catalog is None:
             catalog = self.get_device_catalog()
-        return self._resolve_catalog_entry(self._device_gpu_model(hostname), catalog)
+        for needle in (self._device_name(hostname), self._device_gpu_model(hostname)):
+            entry = self._resolve_catalog_entry(needle, catalog)
+            if entry is not None:
+                return entry
+        return None
 
     def recommend_device(
         self,
