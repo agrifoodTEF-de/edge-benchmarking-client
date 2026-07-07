@@ -14,6 +14,10 @@ from edge_benchmarking_types.sensors.enums import SensorType
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
 from edge_benchmarking_types.sensors.enums import OakImageResolution
 from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
+from edge_benchmarking_types.edge_farm.enums import (
+    OptimizationFactor,
+    LatencyPercentile,
+)
 from edge_benchmarking_types.sensors.models import (
     SensorConfig,
     OakClientConfig,
@@ -22,6 +26,11 @@ from edge_benchmarking_types.sensors.models import (
 
 EDGE_DEVICE_HOST = "edge-03"
 # EDGE_DEVICE_HOST = "edge-09"
+
+# Real, online edge devices the auto-search (recommend_device) tests benchmark
+# across. recommend_device rewrites the inference client's host per device, so it
+# runs one full benchmark on each of these and ranks the outcomes.
+RECOMMEND_CANDIDATE_DEVICES = ["edge-03", "edge-09"]
 
 EXAMPLES_ROOT_DIR = Path("examples")
 DENSENET_ROOT_DIR = "densenet_onnx"
@@ -429,6 +438,107 @@ class TestEdgeBenchmarkingClient:
         assert {"time", "CPU1", "GPU", "RAM", "Temp CPU", "Temp GPU"}.issubset(
             benchmark_job.benchmark_results.keys()
         )
+
+    def _recommend_benchmark_inputs(
+        self,
+    ) -> tuple[Path, Path, Path, list[Path], TritonDenseNetClient]:
+        root = EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+        model = self.client.find_model(root_dir=root)
+        model_metadata = self.client.find_model_metadata(root_dir=root)
+        labels = self.client.find_labels(root_dir=root)
+        # A re-usable list (not a one-shot generator), so recommend_device can
+        # consume it once per candidate device without a dataset_factory.
+        dataset = self.client.find_dataset(root_dir=root, file_extensions={".JPEG"})
+        # host is a placeholder; recommend_device rewrites it per candidate device.
+        inference_client = TritonDenseNetClient(
+            protocol="http",
+            host=RECOMMEND_CANDIDATE_DEVICES[0],
+            port=8000,
+            num_workers=1,
+            samples_per_second=10,
+            warm_up=False,
+            model_name=DENSENET_ROOT_DIR,
+            model_version="1",
+            batch_size=1,
+            num_classes=10,
+            scaling="inception",
+        )
+        return model, model_metadata, labels, dataset, inference_client
+
+    def test_recommend_device_latency_returns_compliant_winner(self) -> None:
+        model, model_metadata, labels, dataset, inference_client = (
+            self._recommend_benchmark_inputs()
+        )
+        rec = self.client.recommend_device(
+            model=model,
+            model_metadata=model_metadata,
+            labels=labels,
+            dataset=dataset,
+            inference_client=inference_client,
+            candidate_devices=RECOMMEND_CANDIDATE_DEVICES,
+            factor=OptimizationFactor.LATENCY,
+            latency_threshold_ms=1000,
+            latency_metric=LatencyPercentile.P95,
+        )
+        # Every candidate is accounted for and a compliant winner is returned.
+        assert {c.hostname for c in rec.candidates} == set(RECOMMEND_CANDIDATE_DEVICES)
+        assert rec.winner_hostname in RECOMMEND_CANDIDATE_DEVICES
+        winner = next(c for c in rec.candidates if c.hostname == rec.winner_hostname)
+        assert winner.meets_constraint
+        # Latency factor: the winner is the fastest among the compliant devices.
+        compliant = [c for c in rec.candidates if c.meets_constraint]
+        assert winner.latency_ms == min(c.latency_ms for c in compliant)
+
+    def test_recommend_device_cost_picks_cheapest_compliant(self) -> None:
+        model, model_metadata, labels, dataset, inference_client = (
+            self._recommend_benchmark_inputs()
+        )
+        rec = self.client.recommend_device(
+            model=model,
+            model_metadata=model_metadata,
+            labels=labels,
+            dataset=dataset,
+            inference_client=inference_client,
+            candidate_devices=RECOMMEND_CANDIDATE_DEVICES,
+            factor=OptimizationFactor.COST,
+            latency_threshold_ms=1000,
+            latency_metric=LatencyPercentile.P95,
+        )
+        assert {c.hostname for c in rec.candidates} == set(RECOMMEND_CANDIDATE_DEVICES)
+        # Cost factor needs a catalog cost per device. If the live Edge-Farm
+        # catalog has no entry for these GPUs, COST ranking yields no winner —
+        # tolerate that rather than asserting a price relationship that can't hold.
+        if rec.winner_hostname is not None:
+            winner = next(c for c in rec.candidates if c.hostname == rec.winner_hostname)
+            assert winner.meets_constraint
+            assert winner.cost_eur is not None
+            assert winner.cost_eur == min(
+                c.cost_eur for c in rec.candidates if c.meets_constraint
+            )
+
+    def test_recommend_device_impossible_latency_has_no_winner(self) -> None:
+        model, model_metadata, labels, dataset, inference_client = (
+            self._recommend_benchmark_inputs()
+        )
+        rec = self.client.recommend_device(
+            model=model,
+            model_metadata=model_metadata,
+            labels=labels,
+            dataset=dataset,
+            inference_client=inference_client,
+            candidate_devices=RECOMMEND_CANDIDATE_DEVICES,
+            factor=OptimizationFactor.LATENCY,
+            latency_threshold_ms=0.0001,
+            latency_metric=LatencyPercentile.P95,
+        )
+        # No device can satisfy a sub-microsecond budget: no winner, but all
+        # candidates are still listed and excluded for exceeding the threshold.
+        assert rec.winner_hostname is None
+        assert {c.hostname for c in rec.candidates} == set(RECOMMEND_CANDIDATE_DEVICES)
+        for c in rec.candidates:
+            assert not c.meets_constraint
+            assert c.excluded_reason
+            assert "exceeds threshold" in c.excluded_reason
 
 
 if __name__ == "__main__":
