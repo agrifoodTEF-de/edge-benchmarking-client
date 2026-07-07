@@ -57,7 +57,15 @@ def client(monkeypatch):
     ]
     monkeypatch.setattr(c, "get_device_catalog", lambda: catalog)
 
-    gpu_by_host = {"nano": "NVIDIA Jetson Orin Nano", "agx": "NVIDIA Jetson AGX Orin"}
+    # Catalog resolution matches on the device name first; the GPU chip model
+    # (a codename here) is only a fallback and intentionally does NOT match.
+    name_by_host = {
+        "nano": "NVIDIA Jetson Orin Nano 4GB Module",
+        "agx": "NVIDIA Jetson AGX Orin 64GB Developer Kit",
+    }
+    monkeypatch.setattr(c, "_device_name", lambda h: name_by_host.get(h))
+
+    gpu_by_host = {"nano": "gp10b", "agx": "ga10b"}
     monkeypatch.setattr(c, "_device_gpu_model", lambda h: gpu_by_host.get(h))
 
     # Each host benchmarks with a fixed latency; agx faster but pricier.
@@ -119,3 +127,13 @@ def test_recommend_handles_device_failure(client, monkeypatch):
     agx = next(c for c in rec.candidates if c.hostname == "agx")
     assert not agx.meets_constraint
     assert "benchmark failed" in agx.excluded_reason
+
+
+def test_resolve_catalog_entry_matches_on_device_name(client):
+    # Regression: the GPU chip model is a codename ("ga10b") that does not match
+    # any catalog gpu_model, but the marketing name ("...AGX Orin...") does, so
+    # the device must still resolve to a cost/tier entry and be rankable.
+    entry = client.resolve_catalog_entry("agx")
+    assert entry is not None
+    assert entry.gpu_model == "AGX Orin"
+    assert entry.cost_eur == 1229
