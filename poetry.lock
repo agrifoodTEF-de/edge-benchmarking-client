@@ -509,7 +509,7 @@ files = [
 
 [[package]]
 name = "edge-benchmarking-types"
-version = "0.2.1"
+version = "0.2.2"
 description = "Type definitions for AgrifoodTEF's Edge Benchmarking Service."
 optional = false
 python-versions = "^3.8"
@@ -523,7 +523,7 @@ pydantic = "2.10.6"
 type = "git"
 url = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git"
 reference = "HEAD"
-resolved_reference = "c837d4af2ad2acf4ac3ec7ec28da973645dd0e3d"
+resolved_reference = "9cc649ae3b018b91312b1467b16efe5ed568cd17"
 
 [[package]]
 name = "executing"
@@ -541,13 +541,13 @@ tests = ["asttokens (>=2.1.0)", "coverage", "coverage-enable-subprocess", "ipyth
 
 [[package]]
 name = "filelock"
-version = "3.29.6"
+version = "3.29.7"
 description = "A platform independent file lock."
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "filelock-3.29.6-py3-none-any.whl", hash = "sha256:14d5f5597d2e0c4dbd774cfb6d8132da1db44da83732aab679d54f7dcf97ab65"},
-    {file = "filelock-3.29.6.tar.gz", hash = "sha256:895c532ef3f4ef04972b9446a8c4e2931a5c399ff3c4be4c9369f2639b80f793"},
+    {file = "filelock-3.29.7-py3-none-any.whl", hash = "sha256:987db6f789a3a2a59f55081801b2b3697cb97e2a736b5f1a9e99b559285fbc51"},
+    {file = "filelock-3.29.7.tar.gz", hash = "sha256:5b481979797ae69e72f0b389d89a80bdd585c260c5b3f1fb9c0a5ba9bb3f195d"},
 ]
 
 [[package]]
