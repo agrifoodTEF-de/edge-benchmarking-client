@@ -66,19 +66,43 @@ def extract_latency_ms(
     return None if seconds is None else seconds * _SECONDS_TO_MS
 
 
+def extract_accuracy(
+    benchmark_job: BenchmarkJob, accuracy_metric: str = "accuracy"
+) -> Optional[float]:
+    """Pull the accuracy metric from a job's ``metrics`` dict, if present.
+
+    ``metrics`` is populated by the Edge-Farm API only when CVAT ground-truth
+    annotations reached the job bucket, so it may be ``None`` (no ground truth)
+    or missing the requested key — both return ``None`` here.
+    """
+    if benchmark_job.inference_results is None:
+        return None
+    metrics = benchmark_job.inference_results.metrics
+    if not metrics:
+        return None
+    return metrics.get(accuracy_metric)
+
+
 def rank_candidates(
     candidates: list[CandidateInput],
     *,
     factor: OptimizationFactor,
     latency_metric: LatencyPercentile,
     latency_threshold_ms: float,
+    min_accuracy: Optional[float] = None,
+    accuracy_metric: str = "accuracy",
 ) -> DeviceRecommendation:
-    """Filter candidates by the latency constraint and rank survivors by factor.
+    """Filter candidates by the latency and accuracy constraints, rank by factor.
+
+    A device survives only if it satisfies *every* hard gate: its chosen latency
+    statistic stays within ``latency_threshold_ms`` **and** — when
+    ``min_accuracy`` is set — its accuracy is at least ``min_accuracy``. When
+    ``min_accuracy`` is ``None`` the accuracy gate is skipped entirely.
 
     Returns a :class:`DeviceRecommendation` whose ``candidates`` lists surviving
     devices first (best→worst by factor) followed by excluded ones, each
-    carrying an ``excluded_reason``. ``winner_hostname`` is the top survivor, or
-    ``None`` if none qualified.
+    carrying an ``excluded_reason`` (multiple failed gates are joined).
+    ``winner_hostname`` is the top survivor, or ``None`` if none qualified.
     """
     results: list[DeviceCandidateResult] = []
 
@@ -108,20 +132,39 @@ def rank_candidates(
         result.energy_joules = compute_energy_joules(
             candidate.benchmark_job.benchmark_results
         )
+        result.accuracy = extract_accuracy(candidate.benchmark_job, accuracy_metric)
+
+        # Latency AND accuracy are co-equal hard gates: a device survives only if
+        # it clears every gate. Collect all failures so a device that misses more
+        # than one is explained fully.
+        reasons: list[str] = []
 
         if result.latency_ms is None:
-            result.excluded_reason = f"no {latency_metric.value} latency available"
+            reasons.append(f"no {latency_metric.value} latency available")
         elif result.latency_ms > latency_threshold_ms:
-            result.excluded_reason = (
+            reasons.append(
                 f"{latency_metric.value} latency {result.latency_ms:.1f}ms "
                 f"exceeds threshold {latency_threshold_ms:.1f}ms"
             )
-        elif factor == OptimizationFactor.COST and result.cost_eur is None:
-            result.excluded_reason = "no catalog cost for device; cannot rank by cost"
+
+        if min_accuracy is not None:
+            if result.accuracy is None:
+                reasons.append(
+                    f"no accuracy metric reported; floor is {min_accuracy:.3f}"
+                )
+            elif result.accuracy < min_accuracy:
+                reasons.append(
+                    f"accuracy {result.accuracy:.3f} below floor {min_accuracy:.3f}"
+                )
+
+        if factor == OptimizationFactor.COST and result.cost_eur is None:
+            reasons.append("no catalog cost for device; cannot rank by cost")
         elif factor == OptimizationFactor.ENERGY and result.energy_joules is None:
-            result.excluded_reason = "no power telemetry; cannot rank by energy"
-        else:
-            result.meets_constraint = True
+            reasons.append("no power telemetry; cannot rank by energy")
+
+        result.meets_constraint = not reasons
+        if reasons:
+            result.excluded_reason = "; ".join(reasons)
 
         results.append(result)
 
@@ -141,6 +184,8 @@ def rank_candidates(
         factor=factor,
         latency_metric=latency_metric,
         latency_threshold_ms=latency_threshold_ms,
+        min_accuracy=min_accuracy,
+        accuracy_metric=accuracy_metric,
         winner_hostname=survivors[0].hostname if survivors else None,
         candidates=survivors + excluded,
     )

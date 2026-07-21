@@ -28,7 +28,12 @@ def _perf(latency_s: float) -> PerformanceResult:
     )
 
 
-def _job(latency_s: float, power_mw: int = 1000, n: int = 4) -> BenchmarkJob:
+def _job(
+    latency_s: float,
+    power_mw: int = 1000,
+    n: int = 4,
+    accuracy: float | None = None,
+) -> BenchmarkJob:
     # Constant-power telemetry so energy = power_w * duration is deterministic.
     times = [f"2026-06-29T12:00:{s:02d}" for s in range(n)]
     return BenchmarkJob(
@@ -41,6 +46,7 @@ def _job(latency_s: float, power_mw: int = 1000, n: int = 4) -> BenchmarkJob:
                 postprocess=_perf(latency_s),
             ),
             results={},
+            metrics=None if accuracy is None else {"accuracy": accuracy},
         ),
         status=JobStatus.SUCCESS,
     )
@@ -164,3 +170,99 @@ def test_no_survivor_returns_none_winner_but_lists_all():
     assert rec.winner_hostname is None
     assert len(rec.candidates) == 2
     assert all(not c.meets_constraint for c in rec.candidates)
+
+
+def test_accuracy_floor_excludes_below_floor_even_when_fast():
+    # Both meet the latency budget, but only the accurate one clears the floor.
+    candidates = [
+        CandidateInput(
+            "accurate", _job(0.010, accuracy=0.92), "j1", _entry("A", 5, 1229)
+        ),
+        CandidateInput(
+            "inaccurate", _job(0.010, accuracy=0.40), "j2", _entry("B", 3, 330)
+        ),
+    ]
+    rec = rank_candidates(
+        candidates,
+        factor=OptimizationFactor.COST,
+        latency_metric=LatencyPercentile.P95,
+        latency_threshold_ms=50,
+        min_accuracy=0.80,
+    )
+    assert rec.winner_hostname == "accurate"
+    assert rec.min_accuracy == 0.80
+    survivor = next(c for c in rec.candidates if c.hostname == "accurate")
+    assert survivor.accuracy == 0.92 and survivor.meets_constraint
+    excluded = next(c for c in rec.candidates if c.hostname == "inaccurate")
+    assert not excluded.meets_constraint
+    assert "below floor" in excluded.excluded_reason
+
+
+def test_accuracy_ok_but_latency_exceeds_is_excluded():
+    # Accurate but too slow -> still excluded (latency gate).
+    candidates = [
+        CandidateInput(
+            "slow_accurate", _job(0.200, accuracy=0.99), "j1", _entry("A", 3, 330)
+        ),
+    ]
+    rec = rank_candidates(
+        candidates,
+        factor=OptimizationFactor.LATENCY,
+        latency_metric=LatencyPercentile.P95,
+        latency_threshold_ms=50,
+        min_accuracy=0.80,
+    )
+    assert rec.winner_hostname is None
+    reason = rec.candidates[0].excluded_reason
+    assert "exceeds threshold" in reason and "below floor" not in reason
+
+
+def test_fails_both_latency_and_accuracy_reports_both():
+    candidates = [
+        CandidateInput(
+            "slow_bad", _job(0.200, accuracy=0.40), "j1", _entry("A", 3, 330)
+        ),
+    ]
+    rec = rank_candidates(
+        candidates,
+        factor=OptimizationFactor.LATENCY,
+        latency_metric=LatencyPercentile.P95,
+        latency_threshold_ms=50,
+        min_accuracy=0.80,
+    )
+    reason = rec.candidates[0].excluded_reason
+    assert "exceeds threshold" in reason
+    assert "below floor" in reason
+
+
+def test_floor_set_but_no_accuracy_metric_is_excluded():
+    # Ground truth absent -> metrics is None -> excluded when a floor is set.
+    candidates = [
+        CandidateInput("no_gt", _job(0.010), "j1", _entry("A", 3, 330)),
+    ]
+    rec = rank_candidates(
+        candidates,
+        factor=OptimizationFactor.COST,
+        latency_metric=LatencyPercentile.P95,
+        latency_threshold_ms=50,
+        min_accuracy=0.80,
+    )
+    assert rec.winner_hostname is None
+    assert rec.candidates[0].accuracy is None
+    assert "no accuracy metric reported" in rec.candidates[0].excluded_reason
+
+
+def test_min_accuracy_none_ignores_accuracy_gate():
+    # Back-compat: with no floor, a job lacking metrics still survives.
+    candidates = [
+        CandidateInput("no_gt", _job(0.010), "j1", _entry("A", 3, 330)),
+    ]
+    rec = rank_candidates(
+        candidates,
+        factor=OptimizationFactor.COST,
+        latency_metric=LatencyPercentile.P95,
+        latency_threshold_ms=50,
+    )
+    assert rec.winner_hostname == "no_gt"
+    assert rec.candidates[0].meets_constraint
+    assert rec.min_accuracy is None

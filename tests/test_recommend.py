@@ -23,7 +23,7 @@ from edge_benchmarking_types.edge_farm.models import (
 )
 
 
-def _job(job_id: str, latency_s: float) -> BenchmarkJob:
+def _job(job_id: str, latency_s: float, accuracy: float | None = None) -> BenchmarkJob:
     perf = PerformanceResult(
         total_time=latency_s,
         sample_count=1,
@@ -41,6 +41,7 @@ def _job(job_id: str, latency_s: float) -> BenchmarkJob:
                 preprocess=perf, inference=perf, postprocess=perf
             ),
             results={},
+            metrics=None if accuracy is None else {"accuracy": accuracy},
         ),
         status=JobStatus.SUCCESS,
     )
@@ -127,6 +128,34 @@ def test_recommend_handles_device_failure(client, monkeypatch):
     agx = next(c for c in rec.candidates if c.hostname == "agx")
     assert not agx.meets_constraint
     assert "benchmark failed" in agx.excluded_reason
+
+
+def test_recommend_applies_accuracy_floor(client, monkeypatch):
+    # nano is cheaper and fast but low-accuracy; with a floor it must lose to agx.
+    accuracy_by_host = {"nano": 0.55, "agx": 0.95}
+    latency_by_host = {"nano": 0.010, "agx": 0.005}
+
+    def scoring_benchmark(*, edge_device, **kwargs):
+        return _job(
+            f"job-{edge_device}",
+            latency_by_host[edge_device],
+            accuracy=accuracy_by_host[edge_device],
+        )
+
+    monkeypatch.setattr(client, "benchmark", scoring_benchmark)
+    rec = client.recommend_device(
+        model=("m.onnx", None),
+        dataset=[],
+        inference_client=_inference_client(),
+        candidate_devices=["nano", "agx"],
+        factor=OptimizationFactor.COST,
+        latency_threshold_ms=50,
+        min_accuracy=0.80,
+    )
+    assert rec.winner_hostname == "agx"
+    nano = next(c for c in rec.candidates if c.hostname == "nano")
+    assert not nano.meets_constraint
+    assert "below floor" in nano.excluded_reason
 
 
 def test_resolve_catalog_entry_matches_on_device_name(client):

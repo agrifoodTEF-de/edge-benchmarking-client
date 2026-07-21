@@ -541,6 +541,8 @@ class EdgeBenchmarkingClient:
         factor: OptimizationFactor,
         latency_threshold_ms: float,
         latency_metric: LatencyPercentile = LatencyPercentile.P95,
+        min_accuracy: float | None = None,
+        accuracy_metric: str = "accuracy",
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
         annotation: Path | tuple[str, BytesIO] | None = None,
@@ -606,6 +608,8 @@ class EdgeBenchmarkingClient:
             factor=factor,
             latency_metric=latency_metric,
             latency_threshold_ms=latency_threshold_ms,
+            min_accuracy=min_accuracy,
+            accuracy_metric=accuracy_metric,
         )
 
     def get_sensors(self) -> list[SensorInfo]:
