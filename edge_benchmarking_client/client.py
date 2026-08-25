@@ -1,4 +1,5 @@
 import logging
+import types
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,6 +15,7 @@ import urllib
 import requests
 import validators
 
+from typing import Any, Callable, Generator
 from io import BytesIO
 from pathlib import Path
 from requests import Response
@@ -23,16 +25,25 @@ from requests.auth import HTTPBasicAuth
 from edge_benchmarking_client.endpoints import (
     DEVICE,
     SENSOR,
+    CATALOG_DEVICE,
     BENCHMARK_JOB,
     BENCHMARK_DATA,
     BENCHMARK_DATA_MODEL,
     BENCHMARK_DATA_DATASET,
+    BENCHMARK_DATA_ANNOTATION,
+)
+from edge_benchmarking_client.ranking import CandidateInput, rank_candidates
+from edge_benchmarking_types.edge_farm.enums import (
+    OptimizationFactor,
+    LatencyPercentile,
 )
 from edge_benchmarking_types.edge_farm.models import (
     EdgeDevice,
     BenchmarkModel,
     BenchmarkData,
     InferenceClient,
+    DeviceCatalogEntry,
+    DeviceRecommendation,
 )
 from edge_benchmarking_types.edge_device.enums import JobStatus
 from edge_benchmarking_types.edge_device.models import (
@@ -216,8 +227,13 @@ class EdgeBenchmarkingClient:
     def _upload_benchmark_dataset(
         self,
         bucket_name: str,
-        dataset: list[Path] | list[tuple[str, BytesIO]],
+        dataset: (
+            list[Path]
+            | list[tuple[str, BytesIO]]
+            | Generator[tuple[str, BytesIO], None, None]
+        ),
         chunk_size: int | None = None,
+        annotation: Path | tuple[str, BytesIO] | None = None,
     ) -> list[str]:
         def _upload_benchmark_dataset_files() -> list[str]:
             if chunk_size is not None and chunk_size > 1 and len(dataset) > chunk_size:
@@ -239,25 +255,45 @@ class EdgeBenchmarkingClient:
                     bucket_name=bucket_name,
                 )
                 filepaths += response.json()
+
             return filepaths
 
-        def _upload_benchmark_dataset_bytes() -> list[str]:
-            return self._upload_benchmark_files(
-                endpoint=BENCHMARK_DATA_DATASET,
-                fields={"dataset": dataset},
-                bucket_name=bucket_name,
-            ).json()
+        def _upload_benchmark_dataset_generator() -> list[str]:
+            filepaths: list[str] = []
+            logging.info(
+                "Uploading generator dataset in chunks of size %i.", chunk_size
+            )
+            counter = 0
+            for dataset_chunk in dataset:
+                response = self._upload_benchmark_files(
+                    endpoint=BENCHMARK_DATA_DATASET,
+                    fields={"dataset": dataset_chunk},
+                    bucket_name=bucket_name,
+                )
+                filepaths += response.json()
+                counter += 1
+            logging.info("Uploaded %i generated chunks.", counter)
+            return filepaths
 
         if isinstance(dataset, list):
             assert len(dataset), "List of dataset files is empty."
-            if isinstance(dataset[0], Path):
+            if isinstance(dataset[0], Path) or self._file_is_bytes(dataset[0]):
                 filepaths = _upload_benchmark_dataset_files()
-            elif self._file_is_bytes(dataset[0]):
-                filepaths = _upload_benchmark_dataset_bytes()
             else:
                 raise TypeError("Unsupported list of dataset samples.")
+        elif isinstance(dataset, types.GeneratorType):
+            filepaths = _upload_benchmark_dataset_generator()
         else:
             raise TypeError("Unsupported dataset type.")
+
+        if annotation is not None:
+            if isinstance(annotation, (Path, tuple)):
+                response = self._upload_benchmark_files(
+                    endpoint=BENCHMARK_DATA_ANNOTATION,
+                    fields={"annotation": annotation},
+                    bucket_name=bucket_name,
+                )
+                filepaths += response.json()
 
         return filepaths
 
@@ -288,6 +324,13 @@ class EdgeBenchmarkingClient:
     def find_labels(self, root_dir: str, labels_name: str | None = None) -> Path:
         return self._find_file(
             root_dir=root_dir, extensions={".txt"}, filename=labels_name
+        )
+
+    def find_annotations(
+        self, root_dir: str, annotations_name: str | None = None
+    ) -> Path:
+        return self._find_file(
+            root_dir=root_dir, extensions={".xml"}, filename=annotations_name
         )
 
     def capture_dataset(
@@ -409,6 +452,166 @@ class EdgeBenchmarkingClient:
         logging.info(f"{response.status_code} - {device_info}")
         return device_info
 
+    def get_device_catalog(self) -> list[DeviceCatalogEntry]:
+        response = requests.get(url=self._endpoint(CATALOG_DEVICE), auth=self.auth)
+        response.raise_for_status()
+        catalog = [
+            DeviceCatalogEntry.model_validate(entry) for entry in response.json()
+        ]
+        logging.info(f"{response.status_code} - {catalog}")
+        return catalog
+
+    @staticmethod
+    def _resolve_catalog_entry(
+        gpu_model: str | None, catalog: list[DeviceCatalogEntry]
+    ) -> DeviceCatalogEntry | None:
+        """Match a device's GPU model to a catalog entry.
+
+        Mirrors the Edge-Farm resolver: exact match first, then a
+        case-insensitive substring match (the catalog lists specific models
+        before generic ones, e.g. "Orin Nano" before "Nano").
+        """
+        if not gpu_model:
+            return None
+        for entry in catalog:
+            if entry.gpu_model == gpu_model:
+                return entry
+        needle = gpu_model.lower()
+        for entry in catalog:
+            if entry.gpu_model.lower() in needle:
+                return entry
+        return None
+
+    def _device_gpu_model(self, hostname: str) -> str | None:
+        try:
+            device_info = self.get_device_info(hostname)
+        except Exception as e:
+            logging.warning(f"Could not fetch device info for '{hostname}': {e}")
+            return None
+        if device_info.gpu:
+            return device_info.gpu[0].model
+        return None
+
+    def _device_name(self, hostname: str) -> str | None:
+        """Return a device's human-readable name (e.g. "NVIDIA Jetson AGX Orin
+        64GB Developer Kit") from its header, or ``None`` if unavailable."""
+        try:
+            for header in self.get_device_headers():
+                if header.hostname == hostname:
+                    return header.name
+        except Exception as e:
+            logging.warning(f"Could not fetch device headers for '{hostname}': {e}")
+        return None
+
+    def resolve_catalog_entry(
+        self, hostname: str, catalog: list[DeviceCatalogEntry] | None = None
+    ) -> DeviceCatalogEntry | None:
+        """Resolve the catalog entry (cost/tier) for a device.
+
+        Fetches the catalog if not supplied. Useful to callers that drive the
+        per-device benchmark loop themselves (e.g. to persist each run) and only
+        need the cost/tier metadata for ranking.
+
+        The device's marketing name (``DeviceHeader.name``, e.g. "NVIDIA Jetson
+        AGX Orin 64GB Developer Kit") reliably contains the catalog's
+        ``gpu_model`` substrings, whereas the GPU chip model reported in
+        ``DeviceInfo.gpu[*].model`` often does not (it can be a chip codename or
+        empty). Match on the name first, then fall back to the reported GPU
+        model.
+        """
+        if catalog is None:
+            catalog = self.get_device_catalog()
+        for needle in (self._device_name(hostname), self._device_gpu_model(hostname)):
+            entry = self._resolve_catalog_entry(needle, catalog)
+            if entry is not None:
+                return entry
+        return None
+
+    def recommend_device(
+        self,
+        *,
+        model: Path | tuple[str, BytesIO],
+        dataset: (
+            list[Path]
+            | list[tuple[str, BytesIO]]
+            | Generator[list[str, BytesIO], None, None]
+        ),
+        inference_client: InferenceClient,
+        candidate_devices: list[str],
+        factor: OptimizationFactor,
+        latency_threshold_ms: float,
+        latency_metric: LatencyPercentile = LatencyPercentile.P95,
+        min_accuracy: float | None = None,
+        accuracy_metric: str = "accuracy",
+        model_metadata: Path | tuple[str, BytesIO] | None = None,
+        labels: Path | tuple[str, BytesIO] | None = None,
+        annotation: Path | tuple[str, BytesIO] | None = None,
+        chunk_size: int | None = None,
+        cpu_only: bool = False,
+        dataset_factory: Callable[[], Any] | None = None,
+    ) -> DeviceRecommendation:
+        """Benchmark a model across candidate devices and recommend the best one.
+
+        Runs a benchmark on each device in ``candidate_devices`` (sequentially —
+        each device runs one job at a time), then returns the device that
+        minimizes ``factor`` (cost / energy / latency) among those whose chosen
+        latency statistic stays within ``latency_threshold_ms``.
+
+        The dataset is consumed by each benchmark, so for a one-shot generator
+        pass ``dataset_factory`` (a zero-arg callable returning a fresh dataset);
+        a re-usable ``list`` may be passed directly as ``dataset``.
+
+        Cost/tier come from the Edge-Farm device catalog (``GET /catalog/device``)
+        resolved per device via its reported GPU model.
+        """
+        catalog = self.get_device_catalog()
+
+        candidates: list[CandidateInput] = []
+        for hostname in candidate_devices:
+            catalog_entry = self.resolve_catalog_entry(hostname, catalog)
+            device_inference_client = inference_client.model_copy(
+                update={"host": hostname}
+            )
+            try:
+                ds = dataset_factory() if dataset_factory is not None else dataset
+                benchmark_job = self.benchmark(
+                    edge_device=hostname,
+                    dataset=ds,
+                    model=model,
+                    inference_client=device_inference_client,
+                    model_metadata=model_metadata,
+                    labels=labels,
+                    chunk_size=chunk_size,
+                    cpu_only=cpu_only,
+                    annotation=annotation,
+                )
+                candidates.append(
+                    CandidateInput(
+                        hostname=hostname,
+                        benchmark_job=benchmark_job,
+                        benchmark_job_id=benchmark_job.id,
+                        catalog_entry=catalog_entry,
+                    )
+                )
+            except Exception as e:
+                logging.exception(f"Benchmark on device '{hostname}' failed.")
+                candidates.append(
+                    CandidateInput(
+                        hostname=hostname,
+                        catalog_entry=catalog_entry,
+                        error=f"benchmark failed: {e}",
+                    )
+                )
+
+        return rank_candidates(
+            candidates,
+            factor=factor,
+            latency_metric=latency_metric,
+            latency_threshold_ms=latency_threshold_ms,
+            min_accuracy=min_accuracy,
+            accuracy_metric=accuracy_metric,
+        )
+
     def get_sensors(self) -> list[SensorInfo]:
         response = requests.get(url=self._endpoint(SENSOR), auth=self.auth)
         response.raise_for_status()
@@ -486,11 +689,16 @@ class EdgeBenchmarkingClient:
 
     def upload_benchmark_data(
         self,
-        dataset: list[Path] | list[tuple[str, BytesIO]],
+        dataset: (
+            list[Path]
+            | list[tuple[str, BytesIO]]
+            | Generator[tuple[str, BytesIO], None, None]
+        ),
         model: Path | tuple[str, BytesIO],
         model_metadata: Path | tuple[str, BytesIO] | None = None,
         labels: Path | tuple[str, BytesIO] | None = None,
         chunk_size: int | None = None,
+        annotation: Path | tuple[str, BytesIO] | None = None,
     ) -> BenchmarkData:
         # 1. Create benchmark bucket
         bucket_name: str = self._create_benchmark_bucket()
@@ -508,6 +716,7 @@ class EdgeBenchmarkingClient:
             bucket_name=bucket_name,
             dataset=dataset,
             chunk_size=chunk_size,
+            annotation=annotation,
         )
 
         benchmark_data = BenchmarkData(
@@ -518,7 +727,11 @@ class EdgeBenchmarkingClient:
     def benchmark(
         self,
         edge_device: str,
-        dataset: list[Path] | list[tuple[str, BytesIO]],
+        dataset: (
+            list[Path]
+            | list[tuple[str, BytesIO]]
+            | Generator[list[str, BytesIO], None, None]
+        ),
         model: Path | tuple[str, BytesIO],
         inference_client: InferenceClient,
         model_metadata: Path | tuple[str, BytesIO] | None = None,
@@ -526,6 +739,7 @@ class EdgeBenchmarkingClient:
         chunk_size: int | None = None,
         cpu_only: bool = False,
         cleanup: bool = True,
+        annotation: Path | tuple[str, BytesIO] | None = None,
     ) -> BenchmarkJob:
         benchmark_job_id = None
         try:
@@ -536,6 +750,7 @@ class EdgeBenchmarkingClient:
                 model_metadata=model_metadata,
                 labels=labels,
                 chunk_size=chunk_size,
+                annotation=annotation,
             )
 
             # 2. Get the bucket name of benchmark data

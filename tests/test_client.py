@@ -3,6 +3,7 @@
 
 
 import os
+from typing import Generator
 import pytest
 
 from io import BytesIO
@@ -13,6 +14,10 @@ from edge_benchmarking_types.sensors.enums import SensorType
 from edge_benchmarking_client.client import EdgeBenchmarkingClient
 from edge_benchmarking_types.sensors.enums import OakImageResolution
 from edge_benchmarking_types.edge_farm.models import TritonDenseNetClient
+from edge_benchmarking_types.edge_farm.enums import (
+    OptimizationFactor,
+    LatencyPercentile,
+)
 from edge_benchmarking_types.sensors.models import (
     SensorConfig,
     OakClientConfig,
@@ -21,6 +26,11 @@ from edge_benchmarking_types.sensors.models import (
 
 EDGE_DEVICE_HOST = "edge-03"
 # EDGE_DEVICE_HOST = "edge-09"
+
+# Real, online edge devices the auto-search (recommend_device) tests benchmark
+# across. recommend_device rewrites the inference client's host per device, so it
+# runs one full benchmark on each of these and ranks the outcomes.
+RECOMMEND_CANDIDATE_DEVICES = ["edge-03", "edge-09"]
 
 EXAMPLES_ROOT_DIR = Path("examples")
 DENSENET_ROOT_DIR = "densenet_onnx"
@@ -204,9 +214,9 @@ class TestEdgeBenchmarkingClient:
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
             file_extensions=file_extensions,
         )
-        assert len(dataset) == 50
+        assert len(dataset) == 100
         assert {sample.suffix for sample in dataset} <= file_extensions
-        assert all("dataset" == sample.parent.name for sample in dataset)
+        assert all("imagenet_val_2_classes" == sample.parent.name for sample in dataset)
 
     def test_find_model(self) -> None:
         model = self.client.find_model(
@@ -237,8 +247,12 @@ class TestEdgeBenchmarkingClient:
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR),
             file_extensions={".JPEG"},
         )
-        self._benchmark_files_dataset(dataset)
-        self._benchmark_bytes_dataset(dataset)
+        annotations = self.client.find_annotations(
+            root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+        )
+        self._benchmark_files_dataset(dataset, annotations)
+        self._benchmark_bytes_dataset(dataset, annotations)
+        self._benchmark_bytes_dataset_in_generator(dataset, annotations)
 
     def test_benchmark_dataset_archives(self) -> None:
         dataset = self.client.find_dataset(
@@ -263,7 +277,7 @@ class TestEdgeBenchmarkingClient:
         self._benchmark_files_dataset(dataset)
         self._benchmark_bytes_dataset(dataset)
 
-    def _benchmark_files_dataset(self, dataset: list[Path]) -> None:
+    def _benchmark_files_dataset(self, dataset: list[Path], annotations=None) -> None:
         model = self.client.find_model(
             root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
         )
@@ -280,9 +294,10 @@ class TestEdgeBenchmarkingClient:
             model_metadata=model_metadata,
             labels=labels,
             chunk_size=10,
+            annotation=annotations,
         )
 
-    def _benchmark_bytes_dataset(self, dataset: list[Path]) -> None:
+    def _benchmark_bytes_dataset(self, dataset: list[Path], annotations=None) -> None:
         files = {
             "model": self.client.find_model(
                 root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
@@ -304,17 +319,69 @@ class TestEdgeBenchmarkingClient:
             with open(sample, "rb") as fh:
                 files["dataset"].append((sample.name, BytesIO(fh.read())))
 
+        # Exercise the (name, BytesIO) tuple annotation upload path (the one the
+        # Agri-Gaia backend uses), not just the Path path.
+        if annotations is not None:
+            with open(annotations, "rb") as fh:
+                annotations = (annotations.name, BytesIO(fh.read()))
+
         self._test_benchmark(
             dataset=files["dataset"],
             model=files["model"],
             model_metadata=files["model_metadata"],
             labels=files["labels"],
             cpu_only=False,
+            annotation=annotations,
+        )
+
+    def _benchmark_bytes_dataset_in_generator(
+        self, dataset: list[Path], annotations=None
+    ) -> None:
+        files = {
+            "model": self.client.find_model(
+                root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+            ),
+            "model_metadata": self.client.find_model_metadata(
+                root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+            ),
+            "labels": self.client.find_labels(
+                root_dir=EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+            ),
+        }
+
+        for name, filepath in files.items():
+            with open(filepath, "rb") as fh:
+                files[name] = (filepath.name, BytesIO(fh.read()))
+
+        chunk_size = 10
+
+        def byte_dataset_generator() -> Generator[list[str, BytesIO], None, None]:
+            for i in range(0, len(dataset), chunk_size):
+                dataset_chunk = []
+                for file_path in dataset[i : i + chunk_size]:
+                    with open(file_path, "rb") as fh:
+                        dataset_chunk.append((file_path.name, BytesIO(fh.read())))
+                yield dataset_chunk
+
+        # Exercise the (name, BytesIO) tuple annotation upload path (the one the
+        # Agri-Gaia backend uses), not just the Path path.
+        if annotations is not None:
+            with open(annotations, "rb") as fh:
+                annotations = (annotations.name, BytesIO(fh.read()))
+
+        self._test_benchmark(
+            dataset=byte_dataset_generator(),
+            model=files["model"],
+            model_metadata=files["model_metadata"],
+            labels=files["labels"],
+            cpu_only=False,
+            chunk_size=chunk_size,
+            annotation=annotations,
         )
 
     def _test_benchmark(
         self,
-        dataset: Path | tuple[str, BytesIO],
+        dataset: Path | tuple[str, BytesIO] | Generator[list[str, BytesIO], None, None],
         model: Path | tuple[str, BytesIO],
         model_metadata: Path | tuple[str, BytesIO],
         labels: Path | tuple[str, BytesIO],
@@ -329,6 +396,7 @@ class TestEdgeBenchmarkingClient:
         warm_up: bool = False,
         num_classes: int = 10,
         scaling: str | None = "inception",
+        annotation: Path | tuple[str, BytesIO] | None = "",
     ) -> None:
         inference_client = TritonDenseNetClient(
             protocol=protocol,
@@ -354,8 +422,15 @@ class TestEdgeBenchmarkingClient:
             cleanup=cleanup,
             chunk_size=chunk_size,
             cpu_only=cpu_only,
+            annotation=annotation,
         )
 
+        if benchmark_job.inference_results.metrics is not None:
+            if "accuracy" in benchmark_job.inference_results.metrics:
+                assert (
+                    float(benchmark_job.inference_results.metrics.pop("accuracy"))
+                    == 0.53
+                )
         assert all(
             len(predictions) == num_classes
             for predictions in benchmark_job.inference_results.results.values()
@@ -363,6 +438,107 @@ class TestEdgeBenchmarkingClient:
         assert {"time", "CPU1", "GPU", "RAM", "Temp CPU", "Temp GPU"}.issubset(
             benchmark_job.benchmark_results.keys()
         )
+
+    def _recommend_benchmark_inputs(
+        self,
+    ) -> tuple[Path, Path, Path, list[Path], TritonDenseNetClient]:
+        root = EXAMPLES_ROOT_DIR.joinpath(DENSENET_ROOT_DIR)
+        model = self.client.find_model(root_dir=root)
+        model_metadata = self.client.find_model_metadata(root_dir=root)
+        labels = self.client.find_labels(root_dir=root)
+        # A re-usable list (not a one-shot generator), so recommend_device can
+        # consume it once per candidate device without a dataset_factory.
+        dataset = self.client.find_dataset(root_dir=root, file_extensions={".JPEG"})
+        # host is a placeholder; recommend_device rewrites it per candidate device.
+        inference_client = TritonDenseNetClient(
+            protocol="http",
+            host=RECOMMEND_CANDIDATE_DEVICES[0],
+            port=8000,
+            num_workers=1,
+            samples_per_second=10,
+            warm_up=False,
+            model_name=DENSENET_ROOT_DIR,
+            model_version="1",
+            batch_size=1,
+            num_classes=10,
+            scaling="inception",
+        )
+        return model, model_metadata, labels, dataset, inference_client
+
+    def test_recommend_device_latency_returns_compliant_winner(self) -> None:
+        model, model_metadata, labels, dataset, inference_client = (
+            self._recommend_benchmark_inputs()
+        )
+        rec = self.client.recommend_device(
+            model=model,
+            model_metadata=model_metadata,
+            labels=labels,
+            dataset=dataset,
+            inference_client=inference_client,
+            candidate_devices=RECOMMEND_CANDIDATE_DEVICES,
+            factor=OptimizationFactor.LATENCY,
+            latency_threshold_ms=1000,
+            latency_metric=LatencyPercentile.P95,
+        )
+        # Every candidate is accounted for and a compliant winner is returned.
+        assert {c.hostname for c in rec.candidates} == set(RECOMMEND_CANDIDATE_DEVICES)
+        assert rec.winner_hostname in RECOMMEND_CANDIDATE_DEVICES
+        winner = next(c for c in rec.candidates if c.hostname == rec.winner_hostname)
+        assert winner.meets_constraint
+        # Latency factor: the winner is the fastest among the compliant devices.
+        compliant = [c for c in rec.candidates if c.meets_constraint]
+        assert winner.latency_ms == min(c.latency_ms for c in compliant)
+
+    def test_recommend_device_cost_picks_cheapest_compliant(self) -> None:
+        model, model_metadata, labels, dataset, inference_client = (
+            self._recommend_benchmark_inputs()
+        )
+        rec = self.client.recommend_device(
+            model=model,
+            model_metadata=model_metadata,
+            labels=labels,
+            dataset=dataset,
+            inference_client=inference_client,
+            candidate_devices=RECOMMEND_CANDIDATE_DEVICES,
+            factor=OptimizationFactor.COST,
+            latency_threshold_ms=1000,
+            latency_metric=LatencyPercentile.P95,
+        )
+        assert {c.hostname for c in rec.candidates} == set(RECOMMEND_CANDIDATE_DEVICES)
+        # Cost factor needs a catalog cost per device. If the live Edge-Farm
+        # catalog has no entry for these GPUs, COST ranking yields no winner —
+        # tolerate that rather than asserting a price relationship that can't hold.
+        if rec.winner_hostname is not None:
+            winner = next(c for c in rec.candidates if c.hostname == rec.winner_hostname)
+            assert winner.meets_constraint
+            assert winner.cost_eur is not None
+            assert winner.cost_eur == min(
+                c.cost_eur for c in rec.candidates if c.meets_constraint
+            )
+
+    def test_recommend_device_impossible_latency_has_no_winner(self) -> None:
+        model, model_metadata, labels, dataset, inference_client = (
+            self._recommend_benchmark_inputs()
+        )
+        rec = self.client.recommend_device(
+            model=model,
+            model_metadata=model_metadata,
+            labels=labels,
+            dataset=dataset,
+            inference_client=inference_client,
+            candidate_devices=RECOMMEND_CANDIDATE_DEVICES,
+            factor=OptimizationFactor.LATENCY,
+            latency_threshold_ms=0.0001,
+            latency_metric=LatencyPercentile.P95,
+        )
+        # No device can satisfy a sub-microsecond budget: no winner, but all
+        # candidates are still listed and excluded for exceeding the threshold.
+        assert rec.winner_hostname is None
+        assert {c.hostname for c in rec.candidates} == set(RECOMMEND_CANDIDATE_DEVICES)
+        for c in rec.candidates:
+            assert not c.meets_constraint
+            assert c.excluded_reason
+            assert "exceeds threshold" in c.excluded_reason
 
 
 if __name__ == "__main__":
