@@ -55,6 +55,12 @@ from edge_benchmarking_types.sensors.models import SensorConfig, SensorInfo
 
 SUPPORTED_MODEL_FORMATS = {".onnx", ".pt", ".pth"}
 
+# Convenience set for audio datasets, e.g.
+# ``find_dataset(root_dir, file_extensions=AUDIO_EXTENSIONS)``. Covers what
+# libsndfile decodes on the manager side; ``find_dataset`` accepts any
+# extension, so this is a shortcut rather than a restriction.
+AUDIO_EXTENSIONS = {".wav", ".flac", ".ogg", ".aiff", ".aif", ".mp3", ".m4a"}
+
 
 class EdgeBenchmarkingClient:
     def __init__(

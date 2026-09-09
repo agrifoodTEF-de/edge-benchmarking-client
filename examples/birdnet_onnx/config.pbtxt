@@ -1,0 +1,67 @@
+# Triton model configuration for BirdNET v3.0 ONNX.
+#
+# Present for one reason: reproducibility. Without a config.pbtxt Triton
+# auto-completes one from the .onnx extension, which leaves ORT's CUDA
+# execution provider at its default cudnn_conv_algo_search=EXHAUSTIVE. That
+# setting benchmarks every candidate convolution kernel on first use and picks
+# the fastest by measured wall-clock -- a noisy criterion, so near-ties resolve
+# differently on each model load. Since every benchmark job starts a fresh
+# Triton container and reloads the model, identical inputs then produced
+# confidences differing by up to 3.5e-04 between runs.
+#
+# Pinning HEURISTIC removes the timing measurement, and three independent
+# loads become bit-identical (max|delta| exactly 0.0). It is also far cheaper
+# to load: the search costs ~30-36 s per model load, paid on every job.
+#
+# Two traps, both of which make a wrong config look like an unsupported option
+# rather than an error:
+#   * The file must be named exactly "config.pbtxt". The Edge-Farm API stores
+#     an upload at models/<model_name>/<uploaded filename>, and Triton reads
+#     only that name -- anything else is silently ignored and auto-completed.
+#   * cudnn_conv_algo_search is read from this TOP-LEVEL "parameters" block as
+#     an INTEGER (0=EXHAUSTIVE, 1=HEURISTIC, 2=DEFAULT). The nested
+#     optimization.execution_accelerators path copies keys through unvalidated,
+#     and a top-level parameters block that omits the key resets it to
+#     EXHAUSTIVE. See onnxruntime_backend r24.07 src/onnxruntime.cc:770-800.
+#
+# name must equal the Triton model name, which the Edge-Farm API derives from
+# the uploaded model file's stem (model.onnx -> "model").
+name: "model"
+platform: "onnxruntime_onnx"
+max_batch_size: 32
+
+input [
+  {
+    name: "input"
+    data_type: TYPE_FP32
+    # Batch is implicit when max_batch_size > 0, so this is samples only.
+    dims: [ -1 ]
+  }
+]
+
+output [
+  {
+    name: "predictions"
+    data_type: TYPE_FP32
+    dims: [ 11560 ]
+  },
+  {
+    name: "embeddings"
+    data_type: TYPE_FP32
+    dims: [ 1280 ]
+  }
+]
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+  }
+]
+
+parameters [
+  {
+    key: "cudnn_conv_algo_search"
+    value: { string_value: "1" }
+  }
+]

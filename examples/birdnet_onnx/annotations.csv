@@ -1,0 +1,5 @@
+file_path,start_time,end_time,species_name
+"/path/to/recordings/rec_001.wav","00:00:00.00","00:00:03.00","Turdus merula_Common Blackbird"
+"/path/to/recordings/rec_001.wav","00:00:03.00","00:00:06.00","Turdus merula_Common Blackbird"
+"/path/to/recordings/rec_001.wav","00:00:03.00","00:00:06.00","Parus major_Great Tit"
+"/path/to/recordings/rec_002.wav","00:00:00.00","00:00:03.00","Erithacus rubecula_European Robin"
