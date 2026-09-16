@@ -1,0 +1,17 @@
+# Staged artefacts, not source — see README.md ("Getting the model").
+# Both come straight out of birdnet.load("acoustic", "3.0", "onnx"), so they are
+# reproducible in two lines and do not belong in history. Unlike
+# examples/densenet_onnx/model/densenet_onnx.onnx (31 MB, committed), this model
+# is 517 MB — five times GitHub's 100 MB per-file hard limit — so a push carrying
+# it is rejected outright, and this repo is mirrored to both GitLab and GitHub.
+model.onnx
+labels.txt
+
+# The soundscape(s) the example runs against — the dataset, restaged per run.
+*.wav
+
+# Superseded fp16 export (271 MB) and its label list, kept only to reproduce
+# pre-2026-09-07 numbers. README says to delete them once nothing depends on the
+# old confidences. Note the backup deliberately avoids the .onnx extension: a
+# second *.onnx here makes find_model "select first match" with only a warning.
+*.bak
