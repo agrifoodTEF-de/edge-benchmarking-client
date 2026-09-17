@@ -390,13 +390,31 @@ class EdgeBenchmarkingClient:
         edge_device: EdgeDevice,
         inference_client: InferenceClient,
         cpu_only: bool = False,
+        execution_mode: str = "manager",
     ) -> Response:
+        """Start a benchmark job on the Edge-Farm API.
+
+        ``execution_mode`` decides where the benchmark loop runs:
+
+        * ``"manager"`` (default, and the historical behaviour) -- the Edge-Farm
+          API runs it, so preprocessing and postprocessing are measured on the
+          manager's x86 CPU and every inference crosses the LAN to the device.
+        * ``"device"`` -- a runner container on the edge device runs it, so the
+          whole pipeline is measured on the hardware that would do it in the
+          field and the Triton call is container-local.
+
+        The two are not interchangeable measurements. Device mode came out ~16%
+        slower end to end on an AGX Orin; it buys fidelity, not throughput. The
+        mode actually used is recorded on the result as
+        ``inference_results.performance.execution_mode``.
+        """
         response = requests.post(
             url=self._endpoint(BENCHMARK_JOB, job_id, "start"),
             json={
                 "edge_device": edge_device.model_dump(mode="json"),
                 "inference_client": inference_client.model_dump(mode="json"),
                 "cpu_only": cpu_only,
+                "execution_mode": execution_mode,
             },
             auth=self.auth,
         )
@@ -746,7 +764,14 @@ class EdgeBenchmarkingClient:
         cpu_only: bool = False,
         cleanup: bool = True,
         annotation: Path | tuple[str, BytesIO] | None = None,
+        execution_mode: str = "manager",
     ) -> BenchmarkJob:
+        """Upload, run and collect one benchmark job.
+
+        ``execution_mode`` selects where the benchmark loop runs -- see
+        ``start_benchmark_job``. It defaults to "manager", the historical
+        behaviour, so existing callers are unaffected.
+        """
         benchmark_job_id = None
         try:
             # 1. Upload benchmark data
@@ -768,6 +793,7 @@ class EdgeBenchmarkingClient:
                 cpu_only=cpu_only,
                 edge_device=EdgeDevice(host=edge_device),
                 inference_client=inference_client,
+                execution_mode=execution_mode,
             )
 
             # 4. Wait for the benchmark results to become available
