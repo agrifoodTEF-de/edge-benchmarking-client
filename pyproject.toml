@@ -12,7 +12,15 @@ python = ">=3.11,<3.13"
 requests = "2.33.0"
 validators = "0.34.0"
 python-dotenv = "1.2.2"
-edge-benchmarking-types = { git = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git" }
+# Pinned to the branch, not left on the default one. Without a ref this
+# resolves GitHub's main, which trails the working branches badly -- the
+# platform backend was running types 0.3.0 this way while edge-farm ran 0.5.0,
+# so BenchmarkConfig.execution_mode did not exist on the platform side and
+# every device-mode job died with AttributeError.
+#
+# The platform is a live consumer that gets types only transitively, through
+# this package, so this pin is what decides its contract version.
+edge-benchmarking-types = { git = "https://github.com/agrifoodTEF-de/edge-benchmarking-types.git", branch = "feature/edgeProcessing" }
 
 [tool.poetry.group.dev.dependencies]
 black = "26.3.1"
