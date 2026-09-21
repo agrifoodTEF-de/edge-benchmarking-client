@@ -11,6 +11,7 @@ import os
 
 import math
 import time
+import textwrap
 import urllib
 import requests
 import validators
@@ -50,8 +51,51 @@ from edge_benchmarking_types.edge_device.models import (
     DeviceInfo,
     DeviceHeader,
     BenchmarkJob,
+    BenchmarkJobError,
 )
 from edge_benchmarking_types.sensors.models import SensorConfig, SensorInfo
+
+
+class BenchmarkJobFailedError(RuntimeError):
+    """A benchmark job ended in a non-success state.
+
+    Carries the device-side failure detail when the job reported one. The supervising
+    device API turns the runner container's logs into ``BenchmarkJob.error``, and that
+    container is removed as soon as the job finishes - so this exception is in practice the
+    only place the real cause is still visible. Raising without it leaves callers with a
+    status string and nothing to debug.
+
+    Subclasses ``RuntimeError`` so existing ``except RuntimeError`` handlers keep working.
+    """
+
+    def __init__(
+        self,
+        job_id: str,
+        status: Any,
+        error: BenchmarkJobError | None = None,
+        detail_error: Exception | None = None,
+    ) -> None:
+        self.job_id = job_id
+        self.status = status
+        self.error = error
+
+        lines = [f"Benchmark job '{job_id}' returned unexpected status '{status}'."]
+        if error is not None:
+            if error.message:
+                lines.append(f"Device reported: {error.message}")
+            if error.traceback:
+                lines.append("Device traceback:")
+                lines.append(textwrap.indent(error.traceback.rstrip(), "    "))
+        elif detail_error is not None:
+            lines.append(
+                f"The job's error detail could not be retrieved "
+                f"({type(detail_error).__name__}: {detail_error})."
+            )
+        else:
+            lines.append("The job reported no error detail.")
+
+        super().__init__("\n".join(lines))
+
 
 SUPPORTED_MODEL_FORMATS = {".onnx", ".pt", ".pth"}
 
@@ -689,6 +733,24 @@ class EdgeBenchmarkingClient:
         logging.info(f"{response.status_code} - {sensor}")
         return sensor
 
+    def _benchmark_job_failed(
+        self, job_id: str, status: Any
+    ) -> BenchmarkJobFailedError:
+        """Build the failure exception, attaching the device-side detail if it survives.
+
+        Fetching the job can itself fail - it may already have been removed, or the network
+        may be the reason the job failed in the first place. That must not mask the original
+        failure, so the lookup error is reported inside the exception rather than raised.
+        """
+        error, detail_error = None, None
+        try:
+            error = self.get_benchmark_job(job_id=job_id).error
+        except Exception as exc:
+            detail_error = exc
+        return BenchmarkJobFailedError(
+            job_id=job_id, status=status, error=error, detail_error=detail_error
+        )
+
     def get_benchmark_job_results(
         self, job_id: str, max_retries: int = math.inf, patience: int = 1
     ) -> BenchmarkJob:
@@ -697,9 +759,7 @@ class EdgeBenchmarkingClient:
             status = self.get_benchmark_job_status(job_id=job_id)["status"]
 
             if status not in {"success", "running"}:
-                raise RuntimeError(
-                    f"Benchmark job '{job_id}' returned unexpected status '{status}'."
-                )
+                raise self._benchmark_job_failed(job_id=job_id, status=status)
             logging.info(f"Results for benchmark job '{job_id}' are not yet available.")
             retries += 1
             time.sleep(patience)
